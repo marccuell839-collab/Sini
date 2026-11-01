@@ -2,178 +2,264 @@ package dz.sini.jarvis
 
 import android.Manifest
 import android.app.Activity
-import android.os.Bundle
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.media.MediaPlayer
+import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.view.Gravity
+import android.view.View
 import android.widget.*
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
 import kotlin.concurrent.thread
 
 class MainActivity : Activity(), TextToSpeech.OnInitListener {
+    private val bg = Color.rgb(5, 9, 19)
+    private val cyan = Color.rgb(0, 222, 240)
+    private val fg = Color.rgb(220, 240, 248)
+    private val muted = Color.rgb(122, 155, 176)
     private lateinit var status: TextView
-    private lateinit var history: TextView
-    private lateinit var keyInput: EditText
-    private lateinit var modelInput: EditText
-    private lateinit var messageInput: EditText
+    private lateinit var transcript: TextView
+    private lateinit var prompt: EditText
+    private lateinit var openKey: EditText
+    private lateinit var deepKey: EditText
+    private lateinit var model: EditText
+    private lateinit var voice: EditText
+    private lateinit var speakToggle: CheckBox
+    private lateinit var launch: Button
     private lateinit var tts: TextToSpeech
-    private var ready = false
-    private val turns = JSONArray()
-    private val prefs by lazy { getSharedPreferences("jarvis_private", MODE_PRIVATE) }
-    private val speechRequest = 2401
+    private var ttsReady = false
+    private var player: MediaPlayer? = null
+    @Volatile private var running = false
+    private var lastReport = ""
+    private val prefs by lazy { getSharedPreferences("dexter_config", MODE_PRIVATE) }
+    private val speechCode = 301
 
+    private fun shape(color: Int, stroke: Int = cyan, corner: Float = 24f) =
+        GradientDrawable().apply { setColor(color); cornerRadius = corner; setStroke(1, stroke) }
+    private fun txt(s: String, size: Float = 15f, color: Int = fg) =
+        TextView(this).apply { text = s; textSize = size; setTextColor(color); gravity = Gravity.CENTER_VERTICAL }
+    private fun field(hintText: String, value: String = "") =
+        EditText(this).apply {
+            hint = hintText; setText(value); setSingleLine(true)
+            setTextColor(fg); setHintTextColor(muted); textSize = 14f
+            background = shape(Color.rgb(15, 27, 43), Color.rgb(28, 62, 78), 16f)
+            setPadding(22, 14, 22, 14)
+        }
+    private fun add(parent: LinearLayout, v: View, top: Int = 10) {
+        val p = LinearLayout.LayoutParams(-1, -2); p.topMargin = top; parent.addView(v, p)
+    }
+    private fun button(label: String, fn: () -> Unit) =
+        Button(this).apply {
+            text = label; textSize = 14f; setTextColor(Color.BLACK)
+            background = shape(cyan, cyan, 24f); setOnClickListener { fn() }
+        }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.statusBarColor = bg; window.navigationBarColor = bg
         tts = TextToSpeech(this, this)
+        val outside = ScrollView(this).apply { fillViewport = true; setBackgroundColor(bg) }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(28, 36, 28, 20)
-            setBackgroundColor(Color.rgb(7, 13, 27))
+            setPadding(24, 30, 24, 28)
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
         }
-        fun label(value: String, size: Float): TextView = TextView(this).apply {
-            text = value; textSize = size; setTextColor(Color.rgb(197, 225, 255))
+        outside.addView(root)
+        add(root, txt("◉  D E X T E R   L A B", 25f, cyan), 0)
+        add(root, txt("APPNOVA  /  AUTONOMOUS RESEARCH SYSTEM", 11f, muted), 2)
+        status = txt("● SYSTEM READY  •  وضع البحث", 13f, cyan)
+        add(root, status, 19)
+        val sphere = txt("◉", 104f, cyan).apply {
+            gravity = Gravity.CENTER; background = shape(Color.rgb(7, 25, 39), Color.rgb(0, 126, 152), 250f)
         }
-        val title = label("◉  S I N I  ·  J A R V I S", 25f).apply { setTypeface(null, Typeface.BOLD) }
-        root.addView(title)
-        status = label("جاهز للإعداد", 14f)
-        root.addView(status)
-        keyInput = EditText(this).apply {
-            hint = "OpenRouter API Key"
-            setSingleLine(true)
-            inputType = 129
-            setText(prefs.getString("key", ""))
-            setTextColor(Color.WHITE); setHintTextColor(Color.GRAY)
+        add(root, sphere, 18)
+        add(root, txt("المشكلة أو الفكرة البحثية", 16f))
+        prompt = field("مثال: ابتكر طريقة لتوسيع استقبال الإنترنت في قبو").apply {
+            setSingleLine(false); minLines = 3; gravity = Gravity.TOP
         }
-        root.addView(keyInput)
-        modelInput = EditText(this).apply {
-            hint = "Model ID (e.g. openrouter/free)"
-            setSingleLine(true); setText(prefs.getString("model", "openrouter/free"))
-            setTextColor(Color.WHITE); setHintTextColor(Color.GRAY)
+        add(root, prompt, 8)
+        launch = button("⚡ ابدأ تجربة بحثية") { startResearch() }
+        add(root, launch)
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val mic = button("🎤 صوت") { listen() }
+        val share = button("⇧ التقرير") { shareReport() }
+        actions.addView(mic, LinearLayout.LayoutParams(0, -2, 1f))
+        actions.addView(share, LinearLayout.LayoutParams(0, -2, 1f))
+        add(root, actions, 5)
+        add(root, txt("سجل المختبر / LIVE EXPERIMENT", 14f, cyan), 20)
+        transcript = txt("ابدأ بتحديد مشكلة، وسيعمل المختبر على تحليلها وإعداد فرضيات واختبارات مقترحة وتقرير.\n", 14f)
+            .apply { setPadding(16, 14, 16, 14); background = shape(Color.rgb(11, 21, 36), Color.rgb(25, 57, 79)) }
+        add(root, transcript, 8)
+        add(root, txt("إعدادات الاتصال  /  API", 15f, cyan), 22)
+        openKey = field("OpenRouter API key", prefs.getString("open", "") ?: "").apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
-        root.addView(modelInput)
-        history = label("تحدث معي بالعربية أو الإنجليزية. اضغط الميكروفون أو أرسل رسالة.", 17f)
-        val scroll = ScrollView(this).apply {
-            addView(history); isFillViewport = true
+        add(root, openKey)
+        model = field("OpenRouter model", prefs.getString("model", "openrouter/free") ?: "openrouter/free")
+        add(root, model)
+        deepKey = field("Deepgram API key (اختياري)", prefs.getString("deep", "") ?: "").apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        messageInput = EditText(this).apply {
-            hint = "اكتب رسالتك هنا..."
-            setTextColor(Color.WHITE); setHintTextColor(Color.GRAY)
+        add(root, deepKey)
+        voice = field("Deepgram voice", prefs.getString("voice", "aura-2-thalia-en") ?: "aura-2-thalia-en")
+        add(root, voice)
+        speakToggle = CheckBox(this).apply {
+            text = "تشغيل الرد الصوتي (Deepgram إن توفر، وإلا صوت الجهاز)"
+            setTextColor(fg); isChecked = prefs.getBoolean("speak", true)
         }
-        root.addView(messageInput)
-        val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        fun button(text: String, onClick: () -> Unit): Button = Button(this).apply {
-            this.text = text; setOnClickListener { onClick() }
-        }
-        buttons.addView(button("🎤 تحدث") { listen() }, LinearLayout.LayoutParams(0, -2, 1f))
-        buttons.addView(button("➤ إرسال") {
-            val query = messageInput.text.toString().trim()
-            if (query.isNotEmpty()) { messageInput.setText(""); ask(query) }
-        }, LinearLayout.LayoutParams(0, -2, 1f))
-        buttons.addView(button("■ صمت") { tts.stop() }, LinearLayout.LayoutParams(0, -2, 1f))
-        root.addView(buttons)
-        setContentView(root)
+        add(root, speakToggle)
+        add(root, button("حفظ الإعدادات") { save(); status.text = "✓ تم حفظ الإعدادات على الهاتف" })
+        add(root, txt("الأبحاث المقترحة ليست اكتشافات مثبتة. لا يجري التطبيق تجارب فيزيائية ولا ينفّذ كوداً عشوائياً.", 12f, muted))
+        setContentView(outside)
+        lastReport = prefs.getString("report", "") ?: ""
     }
-
+    private fun save() {
+        prefs.edit().putString("open", openKey.text.toString().trim())
+            .putString("model", model.text.toString().trim())
+            .putString("deep", deepKey.text.toString().trim())
+            .putString("voice", voice.text.toString().trim())
+            .putBoolean("speak", speakToggle.isChecked).apply()
+    }
+    private fun ui(stage: String, data: String? = null) = runOnUiThread {
+        status.text = stage
+        if (data != null) transcript.append("\n\n$data")
+    }
+    private fun startResearch() {
+        val problem = prompt.text.toString().trim()
+        val key = openKey.text.toString().trim()
+        val chosen = model.text.toString().trim()
+        if (problem.isEmpty() || key.isEmpty() || chosen.isEmpty()) {
+            status.text = "أدخل المشكلة ومفتاح OpenRouter والنموذج"; return
+        }
+        if (running) return
+        save(); running = true; launch.isEnabled = false
+        transcript.text = "▸ $problem\n"
+        thread {
+            val output = StringBuilder("# DEXTER LAB — Research Report\n\n## Research problem\n$problem\n\n")
+            val phases = listOf(
+                "01 / ANALYSIS" to "حلل المشكلة بدقة: افصل المعطيات والافتراضات والقيود الفيزيائية والتقنية. لا تخترع حقائق.",
+                "02 / HYPOTHESES" to "اقترح ثلاث فرضيات متميزة مع آلية عمل واضحة، شروط النجاح وأسباب الفشل وتقدير مستوى الثقة.",
+                "03 / EXPERIMENT PLAN" to "صمم اختبارات آمنة وقابلة لإعادة الإنتاج باستخدام أدوات متاحة للهاتف. أعط خطوات وقياسات ومعايير نجاح واضحة. لا تدع أنك نفذت تجارب.",
+                "04 / REVIEW & REPORT" to "انقد الأفكار السابقة وحدد ما يمكن إثباته وما يحتاج أجهزة أو أدلة خارجية، ثم قدم أفضل حل عملي والخطوات التالية."
+            )
+            var accumulated = ""
+            try {
+                for ((name, task) in phases) {
+                    ui("◉ $name ...")
+                    val context = accumulated.takeLast(10500)
+                    val answer = queryModel(key, chosen, problem, task, context)
+                    val section = "## $name\n$answer\n\n"
+                    output.append(section)
+                    accumulated += section
+                    ui("✓ $name", "◆ $name\n$answer")
+                }
+                lastReport = output.toString()
+                prefs.edit().putString("report", lastReport).apply()
+                ui("✓ RESEARCH COMPLETE  /  4 OF 4")
+                if (prefs.getBoolean("speak", true)) speak("اكتمل تحليل المشكلة. التقرير جاهز للمراجعة.")
+            } catch (e: Exception) {
+                lastReport = output.toString()
+                ui("⚠ RESEARCH INTERRUPTED", "خطأ: ${e.message}\nيمكنك إعادة المحاولة. النتائج الجزئية محفوظة للجلسة.")
+            } finally { running = false; runOnUiThread { launch.isEnabled = true } }
+        }
+    }
+    private fun queryModel(key: String, selected: String, problem: String, task: String, context: String): String {
+        val system = "You are DEXTER LAB, an evidence-conscious research engineer. Write in Arabic. Be original but rigorous, distinguish verified facts from hypotheses, never fabricate sources, experiment results or novelty claims. No autonomous physical actions. Prefer feasible designs and explicit falsifiable tests. Limit response to 450 words."
+        val messages = JSONArray()
+            .put(JSONObject().put("role", "system").put("content", system))
+            .put(JSONObject().put("role", "user").put("content", "المشكلة: $problem\nالنتائج السابقة:\n$context\nالمهمة الحالية: $task"))
+        val payload = JSONObject().put("model", selected).put("messages", messages).put("max_tokens", 950)
+        val conn = URL("https://openrouter.ai/api/v1/chat/completions").openConnection() as HttpURLConnection
+        try {
+            conn.requestMethod = "POST"; conn.connectTimeout = 25000; conn.readTimeout = 90000
+            conn.setRequestProperty("Authorization", "Bearer $key")
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            conn.setRequestProperty("X-Title", "Appnova Dexter Lab")
+            conn.doOutput = true
+            conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+            val code = conn.responseCode
+            val response = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                ?.bufferedReader()?.use { it.readText() } ?: ""
+            if (code !in 200..299) throw IllegalStateException("OpenRouter HTTP $code: ${response.take(180)}")
+            val content = JSONObject(response).getJSONArray("choices").getJSONObject(0)
+                .getJSONObject("message").optString("content", "")
+            if (content.isBlank()) throw IllegalStateException("النموذج لم يُرجع نصاً؛ جرّب نموذجاً آخر")
+            return content
+        } finally { conn.disconnect() }
+    }
     private fun listen() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 10)
-            return
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 4); return
         }
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            status.text = "خدمة التعرف على الصوت غير متاحة على الهاتف"; return
-        }
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) { status.text = "التعرف على الصوت غير متاح"; return }
+        val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "تكلم الآن...")
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar-DZ")
         }
-        try { startActivityForResult(intent, speechRequest) }
-        catch (e: Exception) { status.text = "تعذر فتح الميكروفون: ${e.message}" }
+        try { startActivityForResult(i, speechCode) } catch (e: Exception) { status.text = "الميكروفون غير متاح" }
     }
-
-    @Deprecated("Legacy recognizer activity result")
+    @Deprecated("Legacy API")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == speechRequest && resultCode == RESULT_OK) {
-            val phrase = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-            if (!phrase.isNullOrBlank()) ask(phrase)
+        if (requestCode == speechCode && resultCode == RESULT_OK) {
+            val value = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+            if (!value.isNullOrBlank()) prompt.setText(value)
         }
     }
-
-    private fun ask(query: String) {
-        val key = keyInput.text.toString().trim()
-        val model = modelInput.text.toString().trim()
-        if (key.isBlank() || model.isBlank()) { status.text = "أدخل مفتاح OpenRouter واسم النموذج"; return }
-        prefs.edit().putString("key", key).putString("model", model).apply()
-        history.append("\n\nأنت: $query")
-        status.text = "جارفيس يفكر..."
-        turns.put(JSONObject().put("role", "user").put("content", query))
+    private fun speak(words: String) {
+        val token = prefs.getString("deep", "") ?: ""
+        if (token.isBlank()) { speakLocal(words); return }
         thread {
             try {
-                val messages = JSONArray().put(JSONObject().put("role", "system").put("content",
-                    "You are JARVIS, a warm, quick, helpful conversational voice companion. Reply in the user's language, including Algerian Arabic when appropriate. Keep answers concise and natural. Do not pretend to execute actions you cannot perform. Prefix every answer with one emotion tag on its own line: [neutral], [happy], [sad], [excited], or [calm]. Use tags sparingly based on context."))
-                synchronized(turns) {
-                    for (i in maxOf(0, turns.length()-16) until turns.length()) messages.put(turns.getJSONObject(i))
-                }
-                val payload = JSONObject().put("model", model).put("messages", messages)
-                    .put("max_tokens", 320)
-                val conn = URL("https://openrouter.ai/api/v1/chat/completions").openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.connectTimeout = 20000; conn.readTimeout = 60000
-                conn.setRequestProperty("Authorization", "Bearer $key")
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.doOutput = true
-                conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-                val code = conn.responseCode
-                val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
-                    ?.bufferedReader()?.use { it.readText() } ?: ""
-                if (code !in 200..299) throw Exception("HTTP $code: ${body.take(250)}")
-                val answer = JSONObject(body).getJSONArray("choices").getJSONObject(0)
-                    .getJSONObject("message").optString("content", "")
-                val clean = answer.replace(Regex("^\\[(neutral|happy|sad|excited|calm)]\\s*", RegexOption.IGNORE_CASE), "").trim()
-                val emotion = Regex("^\\[(neutral|happy|sad|excited|calm)]", RegexOption.IGNORE_CASE).find(answer)
-                    ?.groupValues?.get(1)?.lowercase() ?: "neutral"
-                synchronized(turns) { turns.put(JSONObject().put("role", "assistant").put("content", clean)) }
-                runOnUiThread {
-                    history.append("\n\nJARVIS: $clean")
-                    status.text = "النبرة: $emotion"
-                    speak(clean, emotion)
-                }
+                val modelName = prefs.getString("voice", "aura-2-thalia-en") ?: "aura-2-thalia-en"
+                val conn = URL("https://api.deepgram.com/v1/speak?model=${java.net.URLEncoder.encode(modelName, "UTF-8")}")
+                    .openConnection() as HttpURLConnection
+                try {
+                    conn.requestMethod = "POST"; conn.connectTimeout = 20000; conn.readTimeout = 45000
+                    conn.setRequestProperty("Authorization", "Token $token")
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.doOutput = true
+                    conn.outputStream.use { it.write(JSONObject().put("text", words).toString().toByteArray()) }
+                    if (conn.responseCode !in 200..299) throw Exception("Deepgram HTTP ${conn.responseCode}")
+                    val file = File(cacheDir, "dexter_voice.mp3")
+                    conn.inputStream.use { input -> file.outputStream().use { input.copyTo(it) } }
+                    runOnUiThread {
+                        player?.release()
+                        player = MediaPlayer().apply {
+                            setDataSource(file.absolutePath); prepare()
+                            setOnCompletionListener { it.release(); player = null }
+                            start()
+                        }
+                    }
+                } finally { conn.disconnect() }
             } catch (e: Exception) {
-                synchronized(turns) { if (turns.length() > 0) turns.remove(turns.length()-1) }
-                runOnUiThread { status.text = "خطأ: ${e.message}" }
+                ui("⚠ Deepgram غير متاح؛ استعمال صوت الجهاز")
+                runOnUiThread { speakLocal(words) }
             }
         }
     }
-
-    private fun speak(text: String, emotion: String) {
-        if (!ready || text.isBlank()) return
-        val (rate, pitch) = when (emotion) {
-            "happy" -> 1.10f to 1.12f
-            "excited" -> 1.17f to 1.15f
-            "sad" -> .85f to .90f
-            "calm" -> .90f to .94f
-            else -> 1f to 1f
-        }
-        tts.setSpeechRate(rate); tts.setPitch(pitch)
-        val locale = if (text.any { it in '\u0600'..'\u06ff' }) Locale("ar") else Locale.UK
-        val support = tts.setLanguage(locale)
-        if (support == TextToSpeech.LANG_MISSING_DATA || support == TextToSpeech.LANG_NOT_SUPPORTED) {
-            status.text = "ثبت صوتًا للغة المطلوبة من إعدادات تحويل النص إلى كلام"
-        }
-        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-response")
+    private fun speakLocal(words: String) {
+        if (!ttsReady) return
+        tts.language = Locale("ar")
+        tts.speak(words, TextToSpeech.QUEUE_FLUSH, null, "dexter")
     }
-
-    override fun onInit(result: Int) { ready = result == TextToSpeech.SUCCESS }
-    override fun onDestroy() { tts.stop(); tts.shutdown(); super.onDestroy() }
+    private fun shareReport() {
+        if (lastReport.isBlank()) { status.text = "لم يتم إنشاء تقرير بعد"; return }
+        val i = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"; putExtra(Intent.EXTRA_TEXT, lastReport)
+        }
+        startActivity(Intent.createChooser(i, "مشاركة تقرير المختبر"))
+    }
+    override fun onInit(result: Int) { ttsReady = result == TextToSpeech.SUCCESS }
+    override fun onDestroy() { player?.release(); tts.stop(); tts.shutdown(); super.onDestroy() }
 }

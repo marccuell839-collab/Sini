@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Dexter Lab APK
 on:
   push:
     branches: [main]
@@ -15,24 +15,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install Android platform
-        shell: bash
-        run: |
-          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)"
-          test -n "$SDKMANAGER"
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
       - name: Build
         run: gradle :app:assembleDebug --stacktrace --no-daemon
-      - name: Verify artifact
+      - name: Verify APK
         run: test -s app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Sini-Jarvis-debug-apk
+          name: Dexter-Lab-Android-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
