@@ -290,98 +290,7 @@ fun SettingsScreen(
 
         // ------------------------------------------------------- voice
         Section(title = stringRes(R.string.settings_voice)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = settings.voiceProvider == "groq",
-                    onClick = { viewModel.setVoiceProvider("groq"); viewModel.setVoice("aisha") },
-                    label = { Text("Groq • عائشة (صوت لورا)") },
-                )
-                FilterChip(
-                    selected = settings.voiceProvider == "azure",
-                    onClick = { viewModel.setVoiceProvider("azure") },
-                    label = { Text("إسماعيل (أزور مباشرة)") },
-                )
-                FilterChip(
-                    selected = settings.voiceProvider == "deepgram",
-                    onClick = {
-                        viewModel.setVoiceProvider("deepgram")
-                        viewModel.setVoice("aura-2-thalia-en")
-                    },
-                    label = { Text("ديبڨرام (إنجليزي)") },
-                )
-                FilterChip(
-                    selected = settings.voiceProvider == "relay",
-                    onClick = { viewModel.setVoiceProvider("relay") },
-                    label = { Text("عبر الخادم") },
-                )
-                FilterChip(
-                    selected = settings.voiceProvider == "system",
-                    onClick = { viewModel.setVoiceProvider("system") },
-                    label = { Text("محرّك الهاتف") },
-                )
-            }
-
-            Text(
-                if (settings.voiceProvider == "deepgram") {
-                    "أصوات ديبڨرام إنجليزية — لا يملك أي صوت عربي. " +
-                        "لذلك سيردّ جارفيس بالإنجليزية أيضًا، لأن صوتًا إنجليزيًا يقرأ نصًّا عربيًا يخرج كلامًا مشوّهًا. " +
-                        "يستعمل نفس مفتاح ديبڨرام، ودرجة الصوت وسرعته تُطبَّقان عند التشغيل."
-                } else if (settings.voiceProvider == "groq") {
-                    "Orpheus العربي السعودي عبر Groq، بستة أصوات. يحتاج مفتاح Groq واتصال إنترنت. تكلفة حسب الاستعمال، ولا يدعم التحكم بنبرة الصوت عبر تعليمات المشاعر."
-                } else if (settings.voiceProvider == "azure") {
-                    "يتّصل بأزور مباشرة بمفتاحك. إن تعذّر، ينطق محرّك الهاتف تلقائيًا."
-                } else if (settings.voiceProvider == "relay") {
-                    "يحتاج إقران الجهاز بالخادم. إن تعذّر، ينطق محرّك الهاتف تلقائيًا."
-                } else {
-                    "يعمل بلا إنترنت، وجودته تتبع الأصوات العربية المثبّتة على هاتفك."
-                },
-                color = TextDim,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-
-            if (settings.voiceProvider == "azure" && !ui.backendPaired) {
-                var azureKeyInput by rememberSaveable { mutableStateOf("") }
-                var azureRegionInput by rememberSaveable { mutableStateOf(ui.azureRegion) }
-
-                if (ui.hasAzureKey) {
-                    Text(
-                        "مفتاح أزور محفوظ ✓ (${ui.azureRegion})",
-                        color = SuccessGreen,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-                OutlinedTextField(
-                    value = azureKeyInput,
-                    onValueChange = { azureKeyInput = it },
-                    label = { Text("مفتاح أزور للكلام") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = azureRegionInput,
-                    onValueChange = { azureRegionInput = it },
-                    label = { Text("المنطقة") },
-                    placeholder = { Text("francecentral", color = TextDim) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = {
-                            viewModel.saveAzureCredentials(azureKeyInput, azureRegionInput)
-                            azureKeyInput = ""
-                        },
-                        enabled = azureKeyInput.isNotBlank() && azureRegionInput.isNotBlank(),
-                    ) { Text("حفظ") }
-                    if (ui.hasAzureKey) {
-                        TextButton(onClick = viewModel::clearAzureCredentials) { Text("حذف", color = ErrorRed) }
-                    }
-                }
-            }
-
+            Text("النطق: Groq Orpheus فقط — صوت لورا عائشة. لا يوجد تبديل تلقائي لمحركات أخرى.", color = TextDim, style = MaterialTheme.typography.bodyMedium)
             if (ui.voices.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (option in ui.voices.take(12)) {
@@ -399,7 +308,7 @@ fun SettingsScreen(
                 }
             }
 
-            if (settings.voiceProvider != "groq") {
+            if (false) {
             SliderRow(
                 label = stringRes(R.string.settings_pitch),
                 value = settings.voicePitch.removeSuffix("Hz").toFloatOrNull() ?: -15f,
