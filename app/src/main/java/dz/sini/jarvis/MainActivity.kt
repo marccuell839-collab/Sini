@@ -104,132 +104,37 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
         add(frame, reply, 18)
         val mic = action("◉  ALWAYS LISTENING • PAUSE / RESUME") {
-            audioPaused = !audioPaused
-            status.text = if (audioPaused) "⏸ متوقف مؤقتاً" else "● أسمعك — قل ديكستر"
+            if (DexterVoiceService.running) {
+                stopService(Intent(this, DexterVoiceService::class.java))
+                status.text = "⏸ تم إيقاف ديكستر"
+            } else startBackgroundVoice()
         }
         add(frame, mic, 24, dp(60))
         setContentView(frame)
-        startAudioCapture()
+        startBackgroundVoice()
     }
-    private fun startAudioCapture() {
-        if (captureRunning || destroyed) return
+    private fun startBackgroundVoice() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 44)
-            status.text = "الرجاء الموافقة على إذن الميكروفون"
             return
         }
-        val sampleRate = 16000
-        val min = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        if (min <= 0) { status.text = "الميكروفون غير متاح"; return }
         try {
-            val audio = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, sampleRate,
-                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min * 4, 6400))
-            if (audio.state != AudioRecord.STATE_INITIALIZED) {
-                audio.release(); status.text = "فشل تشغيل الميكروفون"; return
-            }
-            capture = audio
-            captureRunning = true
-            audio.startRecording()
-            status.text = "● أسمعك — قل ديكستر"
-            thread(name = "DexterContinuousMic") {
-                val block = ShortArray(1600)
-                val utterance = ByteArrayOutputStream()
-                var speechStartedAt = 0L
-                var lastVoiceAt = 0L
-                var voiceBlocks = 0
-                try {
-                    while (captureRunning && !destroyed) {
-                        val count = audio.read(block, 0, block.size)
-                        if (count <= 0) continue
-                        if (audioPaused || busy || voicePlaying) {
-                            utterance.reset(); speechStartedAt = 0L; voiceBlocks = 0
-                            continue
-                        }
-                        var sum = 0.0
-                        for (i in 0 until count) {
-                            val value = block[i].toDouble() / 32768.0
-                            sum += value * value
-                        }
-                        val rms = kotlin.math.sqrt(sum / count)
-                        val now = SystemClock.elapsedRealtime()
-                        val speaking = rms > 0.024
-                        if (speaking) {
-                            voiceBlocks++
-                            lastVoiceAt = now
-                            if (speechStartedAt == 0L && voiceBlocks >= 2) {
-                                speechStartedAt = now
-                                utterance.reset()
-                                // Start collecting once speech is detected.
-                            }
-                        } else if (speechStartedAt == 0L) voiceBlocks = 0
-                        if (speechStartedAt != 0L) {
-                            for (i in 0 until count) {
-                                val v = block[i].toInt()
-                                utterance.write(v and 255)
-                                utterance.write((v shr 8) and 255)
-                            }
-                            if ((now - lastVoiceAt > 1150 && now - speechStartedAt > 300) ||
-                                now - speechStartedAt > 17000) {
-                                val data = utterance.toByteArray()
-                                utterance.reset(); speechStartedAt = 0L; voiceBlocks = 0
-                                if (data.size > 7000) transcribeAudio(data)
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    runOnUiThread { status.text = "خطأ في الميكروفون: ${e.message}" }
-                } finally {
-                    try { audio.stop() } catch (_: Exception) {}
-                    audio.release()
-                    captureRunning = false
-                    if (capture === audio) capture = null
-                }
-            }
-        } catch (e: SecurityException) { status.text = "إذن الميكروفون مرفوض" }
-          catch (e: Exception) { status.text = "تعذر تشغيل الميكروفون: ${e.message}" }
+            androidxPlaceholderStart()
+            status.text = "● DEXTER يعمل في الخلفية"
+        } catch (e: Exception) { status.text = "تعذر تشغيل الخدمة: ${e.message}" }
+        if (android.os.Build.VERSION.SDK_INT >= 23 && !android.provider.Settings.canDrawOverlays(this)) {
+            AlertDialog.Builder(this).setTitle("عينَا ديكستر")
+                .setMessage("اسمح بالظهور فوق التطبيقات لإظهار عيني DEXTER أعلى الشاشة. يمكنك إلغاء الإذن من إعدادات Android.")
+                .setPositiveButton("فتح الإعدادات") { _, _ ->
+                    startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        android.net.Uri.parse("package:$packageName")))
+                }.setNegativeButton("لاحقاً", null).show()
+        }
     }
-    private fun transcribeAudio(pcm: ByteArray) {
-        val key = prefs.getString("groq", "") ?: ""
-        if (key.isBlank()) {
-            runOnUiThread { status.text = "أدخل Groq API Key لتفعيل التعرف على الصوت" }
-            return
-        }
-        // The microphone continues recording while this request runs.
-        thread(name = "DexterGroqSTT") {
-            try {
-                val boundary = "DexterAudioBoundary7462"
-                val wav = ByteArrayOutputStream()
-                val byteRate = 16000 * 2
-                fun leInt(n: Int) { for (i in 0..3) wav.write((n shr (8 * i)) and 255) }
-                fun leShort(n: Int) { wav.write(n and 255); wav.write((n shr 8) and 255) }
-                wav.write("RIFF".toByteArray()); leInt(pcm.size + 36)
-                wav.write("WAVEfmt ".toByteArray()); leInt(16); leShort(1); leShort(1)
-                leInt(16000); leInt(byteRate); leShort(2); leShort(16)
-                wav.write("data".toByteArray()); leInt(pcm.size); wav.write(pcm)
-                val output = ByteArrayOutputStream()
-                fun field(name: String, value: String) {
-                    output.write("--$boundary\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n".toByteArray())
-                }
-                field("model", "whisper-large-v3-turbo")
-                field("language", "ar")
-                output.write("--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"voice.wav\"\r\nContent-Type: audio/wav\r\n\r\n".toByteArray())
-                output.write(wav.toByteArray()); output.write("\r\n--$boundary--\r\n".toByteArray())
-                val conn = URL("https://api.groq.com/openai/v1/audio/transcriptions").openConnection() as HttpURLConnection
-                try {
-                    conn.requestMethod = "POST"; conn.connectTimeout = 18000; conn.readTimeout = 45000
-                    conn.setRequestProperty("Authorization", "Bearer $key")
-                    conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
-                    conn.doOutput = true
-                    conn.outputStream.use { it.write(output.toByteArray()) }
-                    val code = conn.responseCode
-                    if (code !in 200..299) throw Exception("Groq STT HTTP $code")
-                    val phrase = JSONObject(conn.inputStream.bufferedReader().use { it.readText() }).optString("text")
-                    if (phrase.isNotBlank()) runOnUiThread { handleSpoken(phrase) }
-                } finally { conn.disconnect() }
-            } catch (e: Exception) {
-                runOnUiThread { status.text = "تعذر فهم الصوت: ${e.message}" }
-            }
-        }
+    private fun androidxPlaceholderStart() {
+        if (android.os.Build.VERSION.SDK_INT >= 26)
+            startForegroundService(Intent(this, DexterVoiceService::class.java))
+        else startService(Intent(this, DexterVoiceService::class.java))
     }
     private fun handleSpoken(phrase: String) {
         val normalized = phrase.lowercase(Locale.ROOT).trim()
@@ -257,7 +162,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 44 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) startAudioCapture()
+        if (requestCode == 44 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) startBackgroundVoice()
     }
     private fun runAgent(query: String) {
         if (query.isBlank() || busy) return
@@ -463,7 +368,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     override fun onInit(status: Int) { ttsReady = status == TextToSpeech.SUCCESS }
     override fun onDestroy() {
         destroyed = true
-        captureRunning = false
         handler.removeCallbacksAndMessages(null)
         media?.release(); tts.stop(); tts.shutdown()
         super.onDestroy()
