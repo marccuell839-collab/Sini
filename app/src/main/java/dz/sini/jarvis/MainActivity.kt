@@ -122,6 +122,19 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         add(frame, mic, 20, dp(62))
         add(frame, text("APPNOVA  /  PRIVATE AI SYSTEM", 10f, muted), 14)
         setContentView(frame)
+        val diagnostics = object : Runnable {
+            override fun run() {
+                if (destroyed) return
+                val error = DexterVoiceService.lastError
+                if (error.isNotBlank()) {
+                    status.text = "DEXTER • خطأ في الصوت"
+                    reply.text = error
+                    reply.setTextColor(android.graphics.Color.rgb(255, 181, 118))
+                }
+                handler.postDelayed(this, 1000L)
+            }
+        }
+        handler.postDelayed(diagnostics, 1000L)
         startBackgroundVoice()
     }
     private fun startBackgroundVoice() {
