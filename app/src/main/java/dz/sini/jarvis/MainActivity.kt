@@ -181,12 +181,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             (command.contains("الكاميرا") || command.contains("كاميرا") || command.contains("camera"))) {
             try {
                 val camera = Intent("android.media.action.STILL_IMAGE_CAMERA")
-                if (camera.resolveActivity(packageManager) != null) {
-                    startActivity(camera)
-                    status.text = "✓ الكاميرا"
-                } else {
-                    status.text = "لم أجد تطبيق الكاميرا"
-                }
+                startActivity(camera)
+                status.text = "✓ الكاميرا"
             } catch (e: Exception) { status.text = "تعذر فتح الكاميرا: ${e.message}" }
             pauseUntil = android.os.SystemClock.uptimeMillis() + 3500L
             return
@@ -392,6 +388,18 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
     }
     override fun onInit(status: Int) { ttsReady = status == TextToSpeech.SUCCESS }
+    override fun onResume() {
+        super.onResume()
+        if (::orb.isInitialized && recognizer != null && !listening) {
+            pauseUntil = 0L
+            scheduleListen(700)
+        }
+    }
+    override fun onPause() {
+        handler.removeCallbacks(restartRunnable)
+        if (listening) { recognizer?.cancel(); listening = false }
+        super.onPause()
+    }
     override fun onDestroy() {
         destroyed = true
         handler.removeCallbacksAndMessages(null)
