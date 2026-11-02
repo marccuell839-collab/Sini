@@ -23,6 +23,7 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
         @Volatile var running = false
         @Volatile var audioLevel = 0f
         @Volatile var visualMode = "idle"
+        @Volatile var lastError = ""
         private const val CHANNEL = "dexter_listening"
         private const val NOTICE = 9204
         private const val STOP = "dz.appnova.dexter.STOP"
@@ -32,7 +33,6 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
     @Volatile private var conversationUntil = 0L
     private val requestInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
     @Volatile private var microphoneThreshold = 0.019f
-    @Volatile private var lastError = ""
     @Volatile private var recording = false
     @Volatile private var speaking = false
     private var tts: android.speech.tts.TextToSpeech? = null
