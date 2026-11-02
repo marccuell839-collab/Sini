@@ -29,6 +29,7 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
     }
     private var recorder: AudioRecord? = null
     private var detector: Porcupine? = null
+    @Volatile private var conversationUntil = 0L
     @Volatile private var recording = false
     @Volatile private var speaking = false
     private var tts: android.speech.tts.TextToSpeech? = null
@@ -142,10 +143,10 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
                         } else if (start==0L) voiceBlocks=0
                         if (start!=0L) {
                             for (i in 0 until count) { val v=block[i].toInt();utterance.write(v and 255);utterance.write((v shr 8) and 255) }
-                            if (now-last>1150 || now-start>17000) {
+                            if (now-last>550 || now-start>25000) {
                                 val pcm=utterance.toByteArray();utterance.reset();start=0;voiceBlocks=0
-                                if (pcm.size>7000 && (detector == null || now < armedUntil)) {
-                                    recognize(pcm, detector != null)
+                                if (pcm.size>7000) {
+                                    recognize(pcm, detector != null && now < armedUntil)
                                     if (detector != null) armedUntil = 0L
                                 }
                             }
@@ -188,10 +189,14 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
                     val wake = Regex("""(?i)(?<![\\p{L}])(?:ديكستر|دكستر|دِكستر|دِيْكْسْتَر|ديكستار|دكستار|ديكستير|دكستير|ديكستَر|دكستَر|دكستِر|دكسترر|ديكسترر|dexter|dextar|dekster|dexterrr|deckster)(?![\\p{L}])""").find(
                         phrase.replace(Regex("[\\u064B-\\u065F\\u0670]"), "")
                     )?.value
-                    if (!wakeAlreadyDetected && wake == null) return@thread
+                    val explicit = wakeAlreadyDetected || wake != null
+                    val directed = explicit || SystemClock.elapsedRealtime() < conversationUntil ||
+                        isClearlyDirected(phrase) || isAddressedByModel(phrase, key)
+                    if (!directed) return@thread
+                    conversationUntil = SystemClock.elapsedRealtime() + 30000L
                     val command = if (wakeAlreadyDetected) {
                         if (wake != null) phrase.substringAfter(wake).trim() else phrase.trim()
-                    } else phrase.substringAfter(wake!!).trim()
+                    } else if (wake != null) phrase.substringAfter(wake).trim() else phrase.trim()
                     visualMode="thinking"
                     if(command.isBlank()) {say("نعم سيدي");return@thread}
                     if ((command.contains("افتح") || command.contains("شغل")) &&
@@ -208,6 +213,39 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
                 } finally {c.disconnect()}
             } catch (_:Exception){}
         }
+    }
+    private fun isClearlyDirected(input: String): Boolean {
+        val phrase = input.trim().lowercase(java.util.Locale.ROOT)
+        return listOf("افتح ", "شغل ", "ابحث ", "قول لي", "قولي", "احكيلي",
+            "فسرلي", "ساعدني", "اعطيني", "وريني", "ذكرني",
+            "وش رايك", "هل تستطيع", "هل تقدر", "open ", "tell me ",
+            "can you ", "please ").any { phrase.startsWith(it) }
+    }
+    private fun isAddressedByModel(phrase: String, key: String): Boolean {
+        if (phrase.length < 5 || phrase.length > 450) return false
+        return try {
+            val messages = org.json.JSONArray()
+                .put(JSONObject().put("role", "system").put("content",
+                    "Is the user's utterance directed to a phone AI assistant rather than another person or background conversation? Reply exactly YES or NO. If uncertain reply NO."))
+                .put(JSONObject().put("role", "user").put("content", phrase))
+            val request = JSONObject().put("model", "openai/gpt-oss-20b")
+                .put("temperature", 0).put("max_completion_tokens", 20).put("messages", messages)
+            val c = URL("https://api.groq.com/openai/v1/chat/completions").openConnection() as HttpURLConnection
+            try {
+                c.requestMethod = "POST"
+                c.connectTimeout = 3500
+                c.readTimeout = 5000
+                c.setRequestProperty("Authorization", "Bearer $key")
+                c.setRequestProperty("Content-Type", "application/json")
+                c.doOutput = true
+                c.outputStream.use { it.write(request.toString().toByteArray(Charsets.UTF_8)) }
+                if (c.responseCode !in 200..299) return false
+                val answer = JSONObject(c.inputStream.bufferedReader().use { it.readText() })
+                    .getJSONArray("choices").getJSONObject(0).getJSONObject("message")
+                    .optString("content").trim().uppercase(java.util.Locale.ROOT)
+                answer.startsWith("YES")
+            } finally { c.disconnect() }
+        } catch (_: Exception) { false }
     }
     private fun say(message:String) {
         speaking=true
