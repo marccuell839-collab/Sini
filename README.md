@@ -1,14 +1,12 @@
-# DEXTER LAB — Appnova Research Agent (Android)
-Native Android research assistant based on Sini, rebuilt as an independent experimental laboratory. Arabic RTL interface.
+# DEXTER • Appnova — Android Agent
 
-## Features
-- Four-stage evidence-aware research loop: analysis, hypotheses, experiment plan, critical review
-- OpenRouter model identifier configurable (default `openrouter/free`; availability and usage limits vary)
-- Optional Deepgram Aura TTS via your own API key; Android TTS fallback
-- Android speech recognition for microphone input (not Deepgram STT)
-- Report sharing and local last-report persistence
-- Secrets entered on the device, never included in the GitHub repository
-- Build APK using GitHub Actions > Build Android APK
+A real Android Kotlin agent prototype with a code-rendered animated orb, OpenRouter free-model discovery, Deepgram optional TTS, native fallback TTS, speech input, action planning and confirmation-gated native tools.
 
-## Limitations
-Not an autonomous code execution or science validation system. No shell execution, external device control, physical experimentation, or verification of novelty. Model may make mistakes. Deepgram pricing, credits and voice/language support depend on the user's account and chosen model. Voice is opt-in and Deepgram English models may not read Arabic correctly.
+## Agent behavior
+The LLM produces structured JSON with an answer and suggested tools. A native validator enforces an allowlist, then the owner individually confirms tool execution. Supported tools: Android settings, browser URL, web search via browser, launch a visible installed app, share text, and clipboard. No unrestricted shell, accessibility abuse, hidden commands or arbitrary app input.
+
+## Setup
+Actions → Build Dexter Lab APK → Artifacts. Enter your own OpenRouter API key in Settings; select a currently-free model. Free models vary in availability, limits and reliability. Optionally enter Deepgram TTS key; Deepgram usage may cost money and chosen voices may not support Arabic. Keys are stored in Android app-private preferences (not encrypted at rest) and are never committed to source.
+
+## Honest limitations
+This is a functional *agent foundation*, not an all-powerful system assistant. AI may output invalid JSON; the UI will show the textual response without proposed actions. No PC integration, wake-word listening, background service, device-pairing, autonomous code execution, on-device scientific experiments or screen-reading yet. Actions need approval. Only the Android SpeechRecognizer handles STT; Deepgram is for TTS here. Device testing and performance profiling remain necessary.
