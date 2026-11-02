@@ -183,7 +183,7 @@ class HomeViewModel @Inject constructor(
             model = current.model,
             instruction = utterance,
             registry = registry,
-            replyLanguage = if (DeepgramTtsProvider.isEnglishVoice(current.voice)) "en" else "ar",
+            replyLanguage = "ar",
             history = history.toList(),
             limits = AgentRuntime.Limits(
                 maxToolCalls = current.maxToolCalls,
