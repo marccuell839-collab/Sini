@@ -57,7 +57,7 @@ class SettingsStore @Inject constructor(private val context: Context) {
             routingMode = p[Keys.ROUTING] ?: JarvisSettings().routingMode,
             sttEngine = p[Keys.STT_ENGINE] ?: JarvisSettings().sttEngine,
             sttLanguage = p[Keys.STT_LANGUAGE] ?: JarvisSettings().sttLanguage,
-            voiceProvider = p[Keys.VOICE_PROVIDER] ?: JarvisSettings().voiceProvider,
+            voiceProvider = "groq",
             voice = (p[Keys.VOICE] ?: JarvisSettings().voice).let { if (it == "abdullah") "aisha" else it },
             voicePitch = p[Keys.PITCH] ?: JarvisSettings().voicePitch,
             voiceRate = p[Keys.RATE] ?: JarvisSettings().voiceRate,
