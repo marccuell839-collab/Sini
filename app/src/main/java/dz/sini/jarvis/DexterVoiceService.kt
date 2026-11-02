@@ -30,6 +30,8 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
     private var recorder: AudioRecord? = null
     private var detector: Porcupine? = null
     @Volatile private var conversationUntil = 0L
+    private val requestInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
+    @Volatile private var microphoneThreshold = 0.019f
     @Volatile private var recording = false
     @Volatile private var speaking = false
     private var tts: android.speech.tts.TextToSpeech? = null
@@ -137,13 +139,13 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
                                 } catch (_: Exception) {}
                             }
                         }
-                        if (sqrt(power/count)>0.024) {
+                        if (level > microphoneThreshold) {
                             last=now;voiceBlocks++
                             if (start==0L && voiceBlocks>=2) {start=now; utterance.reset()}
                         } else if (start==0L) voiceBlocks=0
                         if (start!=0L) {
                             for (i in 0 until count) { val v=block[i].toInt();utterance.write(v and 255);utterance.write((v shr 8) and 255) }
-                            if (now-last>550 || now-start>25000) {
+                            if ((now-last>950 && now-start>350) || now-start>25000) {
                                 val pcm=utterance.toByteArray();utterance.reset();start=0;voiceBlocks=0
                                 if (pcm.size>7000) {
                                     recognize(pcm, detector != null && now < armedUntil)
@@ -157,12 +159,14 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
         } catch (_: Exception) { stopSelf() }
     }
     private fun recognize(pcm: ByteArray, wakeAlreadyDetected: Boolean = false) {
+        if (!requestInFlight.compareAndSet(false, true)) return
         if (!OwnerVoiceProfile.accepts(this, pcm)) {
+            requestInFlight.set(false)
             visualMode = "idle"
             return
         }
         val key=prefs.getString("groq","") ?: ""
-        if(key.isBlank()) return
+        if(key.isBlank()) { requestInFlight.set(false); return }
         thread(name="DexterSpeechToText") {
             try {
                 val wav=ByteArrayOutputStream()
@@ -211,7 +215,7 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
                         } catch (_:Exception){say("تعذر الاتصال بالمخ سيدي")}
                     }
                 } finally {c.disconnect()}
-            } catch (_:Exception){}
+            } catch (_:Exception){} finally { requestInFlight.set(false) }
         }
     }
     private fun isClearlyDirected(input: String): Boolean {
