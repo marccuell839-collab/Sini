@@ -21,7 +21,7 @@ from .state import AssistantState
 from .stt import AzureSttProvider, SttProvider, Transcript, WhisperSttProvider
 from .stt import pick_provider as pick_stt
 from .tools import ToolRegistry, ToolResult
-from .tts import AzureTtsProvider, Sapi5TtsProvider, TtsProvider, Voice
+from .tts import AzureTtsProvider, Sapi5TtsProvider, GroqTtsProvider, TtsProvider, Voice
 from .tts import pick_provider as pick_tts
 
 log = logging.getLogger(__name__)
@@ -49,6 +49,7 @@ class Controller(QObject):
             AzureSttProvider(azure_key, settings.azure_region),
         ]
         self._tts_providers: list[TtsProvider] = [
+            GroqTtsProvider(get_openrouter_key()),
             Sapi5TtsProvider(),
             AzureTtsProvider(azure_key, settings.azure_region),
         ]
@@ -125,7 +126,7 @@ class Controller(QObject):
         if intent is None:
             # Without the model wired in, say so rather than look broken.
             if not get_openrouter_key():
-                self.error_shown.emit("هذا الطلب يحتاج نموذجًا — أضف مفتاح OpenRouter من الإعدادات")
+                self.error_shown.emit("هذا الطلب يحتاج نموذجًا — أضف مفتاح Groq من الإعدادات")
                 self._go(AssistantState.ERROR)
             else:
                 self._go(AssistantState.THINKING)
