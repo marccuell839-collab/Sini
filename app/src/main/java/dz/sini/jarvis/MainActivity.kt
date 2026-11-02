@@ -113,9 +113,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
     private fun runAgent(query: String) {
         if (query.isBlank() || busy) return
-        val key = prefs.getString("open", "") ?: ""
-        val model = prefs.getString("model", "openrouter/free") ?: "openrouter/free"
-        if (key.isBlank()) { showSettings(); status.text = "ضع مفتاح OpenRouter"; return }
+        val useGroq = prefs.getString("provider", "groq") == "groq"
+        val key = prefs.getString(if (useGroq) "groq" else "open", "") ?: ""
+        val model = if (useGroq) "openai/gpt-oss-20b" else (prefs.getString("model", "openrouter/free") ?: "openrouter/free")
+        if (key.isBlank()) { showSettings(); status.text = "أدخل مفتاح مزوّد الذكاء من الإعدادات"; return }
         busy = true; orb.active = true; status.text = "Thinking"
         reply.text = "⏳ يجري تحليل المهمة..."
         thread {
@@ -170,21 +171,33 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), 0)
             setBackgroundColor(Color.rgb(11, 25, 40))
         }
-        val api = settingsField("OpenRouter API Key", prefs.getString("open", "") ?: "", true)
+        val groq = settingsField("Groq API Key • GPT-OSS + Orpheus", prefs.getString("groq", "") ?: "", true)
+        val groqMode = CheckBox(this).apply {
+            text = "استعمال Groq GPT-OSS 20B كمخ رئيسي"
+            setTextColor(light); isChecked = prefs.getString("provider", "groq") == "groq"
+        }
+        val groqAudio = CheckBox(this).apply {
+            text = "صوت Orpheus العربي (abdullah)"
+            setTextColor(light); isChecked = prefs.getBoolean("groq_audio", true)
+        }
+        val api = settingsField("OpenRouter API Key (احتياطي)", prefs.getString("open", "") ?: "", true)
         val model = settingsField("OpenRouter Model", prefs.getString("model", "openrouter/free") ?: "openrouter/free")
         val deep = settingsField("Deepgram API key (optional)", prefs.getString("deep", "") ?: "", true)
         val voice = settingsField("Deepgram voice", prefs.getString("voice", "aura-2-thalia-en") ?: "aura-2-thalia-en")
         val enabled = CheckBox(this).apply {
             text = "تشغيل الصوت"; setTextColor(light); isChecked = prefs.getBoolean("speak", true)
         }
-        for (v in listOf(api, model, deep, voice, enabled)) add(box, v, 5)
+        for (v in listOf(groqMode, groq, groqAudio, api, model, deep, voice, enabled)) add(box, v, 5)
         val pick = Button(this).apply { text = "تصفّح نماذج OpenRouter المجانية" }
         add(box, pick)
         pick.setOnClickListener { browseModels { selected -> model.setText(selected) } }
         val dialog = AlertDialog.Builder(this).setTitle("DEXTER • SETTINGS")
             .setView(ScrollView(this).apply { addView(box) })
             .setPositiveButton("حفظ") { _, _ ->
-                prefs.edit().putString("open", api.text.toString().trim())
+                prefs.edit().putString("provider", if (groqMode.isChecked) "groq" else "openrouter")
+                    .putString("groq", groq.text.toString().trim())
+                    .putBoolean("groq_audio", groqAudio.isChecked)
+                    .putString("open", api.text.toString().trim())
                     .putString("model", model.text.toString().trim())
                     .putString("deep", deep.text.toString().trim())
                     .putString("voice", voice.text.toString().trim())
@@ -242,6 +255,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
     private fun speak(words: String) {
         if (!prefs.getBoolean("speak", true)) return
+        val groqKey = prefs.getString("groq", "") ?: ""
+        if (prefs.getBoolean("groq_audio", true) && groqKey.isNotBlank()) {
+            speakOrpheus(words, groqKey)
+            return
+        }
         val deep = prefs.getString("deep", "") ?: ""
         if (deep.isBlank()) { speakLocal(words); return }
         thread {
@@ -267,6 +285,34 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 }
             } catch (_: Exception) { runOnUiThread { speakLocal(words) } }
             finally { conn?.disconnect() }
+        }
+    }
+    private fun speakOrpheus(words: String, apiKey: String) {
+        thread {
+            try {
+                val sentence = words.replace(Regex("[\\r\\n]+"), " ").take(180)
+                val conn = URL("https://api.groq.com/openai/v1/audio/speech").openConnection() as HttpURLConnection
+                try {
+                    conn.requestMethod = "POST"; conn.connectTimeout = 20000; conn.readTimeout = 40000
+                    conn.setRequestProperty("Authorization", "Bearer $apiKey")
+                    conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
+                    val payload = JSONObject().put("model", "canopylabs/orpheus-arabic-saudi")
+                        .put("voice", "abdullah").put("response_format", "wav")
+                        .put("input", sentence)
+                    conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                    if (conn.responseCode !in 200..299) throw Exception("Groq TTS HTTP ${conn.responseCode}")
+                    val file = File(cacheDir, "dexter_orpheus.wav")
+                    conn.inputStream.use { input -> file.outputStream().use { input.copyTo(it) } }
+                    runOnUiThread {
+                        media?.release()
+                        media = MediaPlayer().apply {
+                            setDataSource(file.absolutePath); prepare()
+                            setOnCompletionListener { it.release(); if (media === it) media = null }
+                            start()
+                        }
+                    }
+                } finally { conn.disconnect() }
+            } catch (_: Exception) { runOnUiThread { speakLocal(words) } }
         }
     }
     private fun speakLocal(words: String) {

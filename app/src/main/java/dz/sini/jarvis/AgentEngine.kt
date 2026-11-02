@@ -39,7 +39,11 @@ Keep answer focused, useful, detailed when needed. Arabic Algerian speech is wel
             .put("messages", JSONArray()
                 .put(JSONObject().put("role", "system").put("content", system))
                 .put(JSONObject().put("role", "user").put("content", prompt)))
-        val conn = (URL("https://openrouter.ai/api/v1/chat/completions").openConnection() as HttpURLConnection)
+        val useGroq = model.startsWith("openai/gpt-oss") || model.startsWith("groq/")
+        val selectedModel = model.removePrefix("groq/")
+        if (useGroq) json.put("model", selectedModel).put("reasoning_effort", "medium")
+        val endpoint = if (useGroq) "https://api.groq.com/openai/v1/chat/completions" else "https://openrouter.ai/api/v1/chat/completions"
+        val conn = (URL(endpoint).openConnection() as HttpURLConnection)
         try {
             conn.requestMethod = "POST"; conn.connectTimeout = 20000; conn.readTimeout = 90000
             conn.setRequestProperty("Authorization", "Bearer $apiKey")
@@ -50,7 +54,7 @@ Keep answer focused, useful, detailed when needed. Arabic Algerian speech is wel
             val code = conn.responseCode
             val raw = (if (code in 200..299) conn.inputStream else conn.errorStream)
                 ?.bufferedReader()?.use { it.readText() } ?: ""
-            if (code !in 200..299) throw IllegalStateException("OpenRouter HTTP $code: ${raw.take(200)}")
+            if (code !in 200..299) throw IllegalStateException("AI provider HTTP $code: ${raw.take(200)}")
             val content = JSONObject(raw).getJSONArray("choices").getJSONObject(0)
                 .getJSONObject("message").optString("content", "")
             stage("04 • فحص الأوامر قبل عرضها")
