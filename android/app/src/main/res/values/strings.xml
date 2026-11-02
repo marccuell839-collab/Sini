@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Base locale is Arabic: this app speaks Arabic first. English is in values-en. -->
 <resources>
-    <string name="app_name">جارفيس</string>
-    <string name="accessibility_service_label">تحكّم جارفيس في الواجهة</string>
-    <string name="accessibility_service_description">يسمح لجارفيس بقراءة ما يظهر على الشاشة والضغط على العناصر عند طلبك ذلك. لا يعمل إلا بعد تمكينك له.</string>
+    <string name="app_name">لورا</string>
+    <string name="accessibility_service_label">تحكّم لورا في الواجهة</string>
+    <string name="accessibility_service_description">يسمح للورا بقراءة ما يظهر على الشاشة والضغط على العناصر عند طلبك ذلك. لا يعمل إلا بعد تمكينك له.</string>
 
     <!-- States, mirroring AssistantState -->
     <string name="state_idle">جاهز للاستماع</string>
@@ -27,8 +27,8 @@
     <!-- Settings -->
     <string name="settings_title">الإعدادات</string>
     <string name="settings_provider">مزوّد الذكاء</string>
-    <string name="settings_api_key">مفتاح OpenRouter</string>
-    <string name="settings_api_key_help">يُحفَظ على هذا الجهاز فقط، مشفّرًا بمفتاح من Android Keystore. لا يُرسَل إلى أي خادم غير OpenRouter.</string>
+    <string name="settings_api_key">مفتاح Groq</string>
+    <string name="settings_api_key_help">يُحفَظ على هذا الجهاز فقط، مشفّرًا بمفتاح من Android Keystore. لا يُرسَل إلى أي خادم غير Groq.</string>
     <string name="settings_model">النموذج</string>
     <string name="settings_test_connection">اختبار الاتصال</string>
     <string name="settings_voice">الصوت</string>
