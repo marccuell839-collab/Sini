@@ -245,7 +245,7 @@ class SettingsViewModel @Inject constructor(
             val current = settings.value
             val result = runCatching {
                 voice.speak(
-                    text = "مرحبًا، أنا جارفيس. جاهز لتنفيذ أوامرك.",
+                    text = "مرحبًا، أنا لورا. معك وأسمعك حتى تكمّل كلامك.",
                     voice = current.voice,
                     pitch = current.voicePitch,
                     rate = current.voiceRate,
