@@ -12,6 +12,7 @@ class OrbView(context: Context) : View(context) {
     private val started = SystemClock.uptimeMillis()
     var active: Boolean = false
         set(value) { field = value; postInvalidateOnAnimation() }
+    private var smoothLevel = 0f
     init { setLayerType(LAYER_TYPE_HARDWARE, null) }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
@@ -19,7 +20,11 @@ class OrbView(context: Context) : View(context) {
         val cx = w / 2f; val cy = h / 2f
         val r = min(w, h) * .39f
         val t = (SystemClock.uptimeMillis() - started) / 1000f
-        val speed = if (active) 1.8f else .75f
+        val mode = if (active) "thinking" else DexterVoiceService.visualMode
+        val target = if (mode == "speaking") .42f else DexterVoiceService.audioLevel
+        smoothLevel += (target - smoothLevel) * .19f
+        val intensity = smoothLevel.coerceIn(0f, 1f)
+        val speed = when (mode) { "thinking" -> 2.4f; "speaking" -> 1.7f; else -> .75f + intensity * 1.2f }
         canvas.drawColor(Color.TRANSPARENT)
         paint.style = Paint.Style.FILL
         paint.shader = RadialGradient(cx, cy, r * 1.33f,
@@ -31,7 +36,7 @@ class OrbView(context: Context) : View(context) {
         paint.strokeWidth = 2f * resources.displayMetrics.density
         paint.color = 0xFF04CBFF.toInt()
         paint.setShadowLayer(13f, 0f, 0f, 0xFF00BFFF.toInt())
-        canvas.drawCircle(cx, cy, r * (1f + .012f * sin(t * speed)), paint)
+        canvas.drawCircle(cx, cy, r * (1f + (.012f + intensity * .09f) * sin(t * speed * 2f)), paint)
         paint.clearShadowLayer()
         paint.strokeWidth = 1.2f * resources.displayMetrics.density
         paint.color = 0x6633ADFF
@@ -39,7 +44,7 @@ class OrbView(context: Context) : View(context) {
         paint.style = Paint.Style.FILL
         for (i in 0 until 80) {
             val a = i * (Math.PI * 2 / 80) + t * .17
-            val rr = r * 1.15f
+            val rr = r * (1.15f + intensity * .07f)
             paint.color = if (i % 4 == 0) 0xFF00D9FF.toInt() else 0x660099EE
             canvas.drawCircle(cx + cos(a).toFloat() * rr, cy + sin(a).toFloat() * rr,
                 if (i % 4 == 0) 1.7f else 1.0f, paint)
@@ -54,15 +59,15 @@ class OrbView(context: Context) : View(context) {
             for (s in 0..180) {
                 val x = (s / 180f * 2f - 1f)
                 val envelope = sqrt((1f - x * x).coerceAtLeast(0f))
-                val y = .35f * sin(x * 4.7f + phase + t * speed) +
-                    .24f * cos(x * 6.2f - phase * 1.4f - t * speed * .7f)
+                val y = (.35f + intensity * .52f) * sin(x * 4.7f + phase + t * speed) +
+                    (.24f + intensity * .26f) * cos(x * 6.2f - phase * 1.4f - t * speed * .7f)
                 val px = cx + r * .91f * x
                 val py = cy + r * envelope * y + r * .13f * sin(phase + t * .37f)
                 if (s == 0) path.moveTo(px, py) else path.lineTo(px, py)
             }
             canvas.drawPath(path, paint)
         }
-        paint.strokeWidth = 3f * resources.displayMetrics.density
+        paint.strokeWidth = (3f + intensity * 4f) * resources.displayMetrics.density
         paint.color = 0xFF45DEFF.toInt()
         paint.setShadowLayer(14f, 0f, 0f, 0xFF00CCFF.toInt())
         canvas.drawArc(cx-r, cy-r, cx+r, cy+r, (t * 34f) % 360f, 82f, false, paint)
