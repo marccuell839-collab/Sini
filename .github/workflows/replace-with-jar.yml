@@ -1,0 +1,58 @@
+name: Replace Sini from uploaded Jar ZIP
+on:
+  push:
+    paths:
+      - 'Jar-Groq-Modified.zip'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  replace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Validate and replace files
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, shutil, zipfile, pathlib
+          archive=pathlib.Path("Jar-Groq-Modified.zip")
+          if not archive.is_file():
+              raise SystemExit("Upload Jar-Groq-Modified.zip to repository root first.")
+          with zipfile.ZipFile(archive) as z:
+              entries=[e for e in z.infolist() if not e.is_dir()]
+              if len(entries)<20: raise SystemExit("Archive appears incomplete")
+              roots={e.filename.split('/')[0] for e in entries}
+              if len(roots)!=1: raise SystemExit("Expected one top-level project folder")
+              root=next(iter(roots))
+              stage=pathlib.Path("/tmp/dexter-replacement")
+              if stage.exists(): shutil.rmtree(stage)
+              stage.mkdir()
+              for entry in entries:
+                  relative=pathlib.PurePosixPath(entry.filename)
+                  if relative.is_absolute() or '..' in relative.parts:
+                      raise SystemExit("Unsafe archive path")
+                  target=stage.joinpath(*relative.parts[1:])
+                  if not relative.parts[1:]: continue
+                  target.parent.mkdir(parents=True,exist_ok=True)
+                  with z.open(entry) as source, target.open('wb') as output:
+                      shutil.copyfileobj(source,output)
+              if not (stage/"README.md").exists() or not (stage/"android").is_dir():
+                  raise SystemExit("Required project files missing. Aborting.")
+              for item in pathlib.Path(".").iterdir():
+                  if item.name==".git": continue
+                  if item.is_dir(): shutil.rmtree(item)
+                  else: item.unlink()
+              for item in stage.iterdir():
+                  shutil.move(str(item),str(pathlib.Path(".")/item.name))
+          PY
+      - name: Commit exact extracted project
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "Replace Sini completely with Jar Groq project"
+          git push
