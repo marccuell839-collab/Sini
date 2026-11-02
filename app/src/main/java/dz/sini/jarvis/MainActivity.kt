@@ -29,6 +29,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private val cyan = Color.rgb(0, 222, 240)
     private val fg = Color.rgb(220, 240, 248)
     private val muted = Color.rgb(122, 155, 176)
+    private lateinit var orb: OrbView
     private lateinit var status: TextView
     private lateinit var transcript: TextView
     private lateinit var prompt: EditText
@@ -80,10 +81,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         add(root, txt("APPNOVA  /  AUTONOMOUS RESEARCH SYSTEM", 11f, muted), 2)
         status = txt("● SYSTEM READY  •  وضع البحث", 13f, cyan)
         add(root, status, 19)
-        val sphere = txt("◉", 104f, cyan).apply {
-            gravity = Gravity.CENTER; background = shape(Color.rgb(7, 25, 39), Color.rgb(0, 126, 152), 250f)
-        }
-        add(root, sphere, 18)
+        orb = OrbView(this)
+        root.addView(orb, LinearLayout.LayoutParams(-1, (resources.displayMetrics.widthPixels * .90f).toInt()))
+        add(root, txt("READY  •  DEXTER ONLINE", 20f, fg).apply { gravity = Gravity.CENTER }, 0)
         add(root, txt("المشكلة أو الفكرة البحثية", 16f))
         prompt = field("مثال: ابتكر طريقة لتوسيع استقبال الإنترنت في قبو").apply {
             setSingleLine(false); minLines = 3; gravity = Gravity.TOP
@@ -144,7 +144,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             status.text = "أدخل المشكلة ومفتاح OpenRouter والنموذج"; return
         }
         if (running) return
-        save(); running = true; launch.isEnabled = false
+        save(); running = true; launch.isEnabled = false; orb.active = true
         transcript.text = "▸ $problem\n"
         thread {
             val output = StringBuilder("# DEXTER LAB — Research Report\n\n## Research problem\n$problem\n\n")
@@ -172,7 +172,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             } catch (e: Exception) {
                 lastReport = output.toString()
                 ui("⚠ RESEARCH INTERRUPTED", "خطأ: ${e.message}\nيمكنك إعادة المحاولة. النتائج الجزئية محفوظة للجلسة.")
-            } finally { running = false; runOnUiThread { launch.isEnabled = true } }
+            } finally { running = false; runOnUiThread { launch.isEnabled = true; orb.active = false } }
         }
     }
     private fun queryModel(key: String, selected: String, problem: String, task: String, context: String): String {
