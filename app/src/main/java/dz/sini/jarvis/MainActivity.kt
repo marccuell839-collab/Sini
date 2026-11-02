@@ -251,6 +251,44 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             text = "تشغيل الصوت"; setTextColor(light); isChecked = prefs.getBoolean("speak", true)
         }
         for (v in listOf(wakeKey, groqMode, groq, groqAudio, api, model, deep, voice, enabled)) add(box, v, 5)
+        val onlyOwner = CheckBox(this).apply {
+            text = "Owner Voice Only (تجريبي، ليس حماية أمنية)"
+            setTextColor(light)
+            isChecked = prefs.getBoolean("owner_voice_only", false)
+            isEnabled = OwnerVoiceProfile.enrolled(this@MainActivity)
+        }
+        add(box, onlyOwner, 5)
+        val enroll = Button(this).apply { text = "تسجيل بصمة صوتية تجريبية • 3 عينات" }
+        add(box, enroll)
+        enroll.setOnClickListener {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 44)
+            } else {
+                AlertDialog.Builder(this).setTitle("تسجيل صوت المالك")
+                    .setMessage("سنوقف الاستماع مؤقتاً ونسجّل صوتك ثلاث مرات. تكلم بوضوح وبصوت طبيعي. هذه مقارنة صوتية تجريبية يمكن خداعها بتسجيلات أو تقليد الصوت، وليست تحقق هوية موثوقاً.")
+                    .setPositiveButton("ابدأ") { _, _ ->
+                        stopService(Intent(this, DexterVoiceService::class.java))
+                        status.text = "Recording voice samples"
+                        thread {
+                            try {
+                                val profiles = (1..3).map { i ->
+                                    runOnUiThread { status.text = "تسجيل العينة $i من 3 — قل ديكستر وجملة أخرى" }
+                                    Thread.sleep(650)
+                                    OwnerVoiceProfile.signature(OwnerVoiceProfile.capture(this))
+                                }
+                                OwnerVoiceProfile.save(this, profiles)
+                                runOnUiThread {
+                                    onlyOwner.isEnabled = true; onlyOwner.isChecked = true
+                                    status.text = "تم حفظ العينات محلياً"
+                                    Toast.makeText(this, "أعد تشغيل خدمة DEXTER", Toast.LENGTH_LONG).show()
+                                }
+                            } catch (e: Exception) {
+                                runOnUiThread { status.text = "فشل التسجيل: ${e.message}" }
+                            }
+                        }
+                    }.setNegativeButton("إلغاء", null).show()
+            }
+        }
         val accessibility = Button(this).apply { text = "تفعيل التحكم باللمس والكتابة" }
         add(box, accessibility)
         accessibility.setOnClickListener { startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
@@ -268,7 +306,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     .putString("model", model.text.toString().trim())
                     .putString("deep", deep.text.toString().trim())
                     .putString("voice", voice.text.toString().trim())
-                    .putBoolean("speak", enabled.isChecked).apply()
+                    .putBoolean("speak", enabled.isChecked)
+                    .putBoolean("owner_voice_only", onlyOwner.isChecked && OwnerVoiceProfile.enrolled(this)).apply()
                 status.text = "Settings saved"
             }.setNegativeButton("إغلاق", null).create()
         dialog.show()
