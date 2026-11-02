@@ -68,7 +68,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         super.onCreate(savedInstanceState)
         window.statusBarColor = bg; window.navigationBarColor = bg
         tts = TextToSpeech(this, this)
-        val outside = ScrollView(this).apply { fillViewport = true; setBackgroundColor(bg) }
+        val outside = ScrollView(this).apply { isFillViewport = true; setBackgroundColor(bg) }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 30, 24, 28)
@@ -107,6 +107,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         add(root, openKey)
         model = field("OpenRouter model", prefs.getString("model", "openrouter/free") ?: "openrouter/free")
         add(root, model)
+        add(root, button("↻ عرض نماذج OpenRouter المجانية") { loadFreeModels() }, 7)
         deepKey = field("Deepgram API key (اختياري)", prefs.getString("deep", "") ?: "").apply {
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
@@ -196,6 +197,43 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             if (content.isBlank()) throw IllegalStateException("النموذج لم يُرجع نصاً؛ جرّب نموذجاً آخر")
             return content
         } finally { conn.disconnect() }
+    }
+
+    private fun loadFreeModels() {
+        ui("◌ جاري جلب النماذج المجانية...")
+        thread {
+            var conn: HttpURLConnection? = null
+            try {
+                conn = URL("https://openrouter.ai/api/v1/models").openConnection() as HttpURLConnection
+                conn.connectTimeout = 16000; conn.readTimeout = 25000
+                if (conn.responseCode !in 200..299) throw Exception("HTTP ${conn.responseCode}")
+                val data = JSONObject(conn.inputStream.bufferedReader().use { it.readText() }).getJSONArray("data")
+                val ids = ArrayList<String>()
+                for (i in 0 until data.length()) {
+                    val item = data.getJSONObject(i)
+                    val id = item.optString("id")
+                    val pricing = item.optJSONObject("pricing")
+                    val p = pricing?.optString("prompt", "") ?: ""
+                    val c = pricing?.optString("completion", "") ?: ""
+                    if (id.endsWith(":free") || (p.toDoubleOrNull() == 0.0 && c.toDoubleOrNull() == 0.0)) ids.add(id)
+                }
+                ids.sort()
+                if (ids.isEmpty()) throw Exception("لم يتم العثور على نماذج مجانية الآن")
+                runOnUiThread {
+                    status.text = "✓ ${ids.size} نموذج متاح وفق بيانات OpenRouter"
+                    AlertDialog.Builder(this)
+                        .setTitle("اختر نموذجاً مجانياً")
+                        .setItems(ids.toTypedArray()) { _, which ->
+                            model.setText(ids[which]); save()
+                            status.text = "✓ النموذج: ${ids[which]}"
+                        }
+                        .setNegativeButton("إغلاق", null)
+                        .show()
+                }
+            } catch (e: Exception) {
+                ui("⚠ تعذر جلب النماذج: ${e.message}")
+            } finally { conn?.disconnect() }
+        }
     }
     private fun listen() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
