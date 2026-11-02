@@ -1,6 +1,8 @@
 package com.jarvis.ai.core.audio
 
 import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
 import android.media.MediaPlayer
 import com.jarvis.ai.core.data.SecureStore
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +26,7 @@ class GroqTtsProvider(
     override val id = "groq"
     override val label = "Groq Orpheus • عائشة"
     @Volatile private var player: MediaPlayer? = null
+    @Volatile private var pcmTrack: AudioTrack? = null
     override suspend fun isAvailable() = !secureStore.openRouterKey.isNullOrBlank()
     override suspend fun voices() = listOf(
         VoiceOption("abdullah", "Abdullah", "ar-SA", "صوت عربي رجالي"),
@@ -52,7 +55,7 @@ class GroqTtsProvider(
                     File.createTempFile("groq-", ".wav", cacheDir).also { it.writeBytes(bytes) }
                 }
             }
-            try { playFile(file); delay(180) } finally { file.delete() }
+            try { playWav(file); delay(180) } finally { file.delete() }
         }
     }
     /** Split on phrase or word boundaries to prevent cutting Arabic syllables. */
@@ -69,6 +72,81 @@ class GroqTtsProvider(
         }
         if (remaining.isNotBlank()) result.add(remaining)
         return result
+    }
+
+    /** Orpheus returns RIFF WAV. Play PCM using its declared sample rate,
+     * never as raw bytes at a guessed Android output sample rate. */
+    private suspend fun playWav(file: File) = withContext(Dispatchers.IO) {
+        val bytes = file.readBytes()
+        fun u16(i: Int) = (bytes[i].toInt() and 255) or ((bytes[i + 1].toInt() and 255) shl 8)
+        fun u32(i: Int) = u16(i) or (u16(i + 2) shl 16)
+        if (bytes.size < 44 || String(bytes, 0, 4, Charsets.US_ASCII) != "RIFF" ||
+            String(bytes, 8, 4, Charsets.US_ASCII) != "WAVE"
+        ) throw TtsException("Groq did not return a valid WAV file")
+        var pos = 12
+        var sampleRate = 0
+        var channels = 0
+        var bits = 0
+        var codec = 0
+        var offset = -1
+        var length = 0
+        while (pos + 8 <= bytes.size) {
+            val tag = String(bytes, pos, 4, Charsets.US_ASCII)
+            val size = u32(pos + 4).toLong() and 0xffffffffL
+            if (size > bytes.size - (pos + 8)) break
+            if (tag == "fmt " && size >= 16) {
+                codec = u16(pos + 8)
+                channels = u16(pos + 10)
+                sampleRate = u32(pos + 12)
+                bits = u16(pos + 22)
+            }
+            if (tag == "data") {
+                offset = pos + 8
+                length = size.toInt()
+                break
+            }
+            pos += 8 + size.toInt() + (size.toInt() and 1)
+        }
+        if (codec != 1 || bits != 16 || channels !in 1..2 || sampleRate !in 8000..48000 ||
+            offset < 0 || length <= 0
+        ) {
+            // Compressed/float WAV: let Android's container decoder try.
+            playFile(file)
+            return@withContext
+        }
+        val format = if (channels == 1) AudioFormat.CHANNEL_OUT_MONO else AudioFormat.CHANNEL_OUT_STEREO
+        val minBuffer = AudioTrack.getMinBufferSize(sampleRate, format, AudioFormat.ENCODING_PCM_16BIT)
+        if (minBuffer <= 0) throw TtsException("Unsupported Groq WAV sample rate: $sampleRate")
+        val track = AudioTrack.Builder()
+            .setAudioAttributes(AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+            .setAudioFormat(AudioFormat.Builder().setSampleRate(sampleRate)
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT).setChannelMask(format).build())
+            .setBufferSizeInBytes(maxOf(minBuffer, 8192))
+            .setTransferMode(AudioTrack.MODE_STREAM).build()
+        pcmTrack = track
+        try {
+            track.play()
+            var written = 0
+            while (written < length) {
+                val count = track.write(bytes, offset + written, length - written, AudioTrack.WRITE_BLOCKING)
+                if (count <= 0) throw TtsException("Audio output failed: $count")
+                written += count
+            }
+            // Drain all samples before releasing the output device.
+            val frames = length / (channels * 2)
+            val deadline = android.os.SystemClock.elapsedRealtime() + length.toLong() * 1000 /
+                (sampleRate * channels * 2) + 1200
+            while (track.playbackHeadPosition.toLong() < frames &&
+                android.os.SystemClock.elapsedRealtime() < deadline) {
+                delay(20)
+            }
+        } finally {
+            runCatching { track.stop() }
+            track.release()
+            if (pcmTrack === track) pcmTrack = null
+        }
     }
 
     private suspend fun playFile(file: File) = suspendCancellableCoroutine<Unit> { cont ->
@@ -90,6 +168,11 @@ class GroqTtsProvider(
             if (cont.isActive) cont.resumeWith(Result.failure(it))
         }
     }
-    override fun stop() { player?.runCatching { stop(); release() }; player = null }
+    override fun stop() {
+        pcmTrack?.runCatching { pause(); flush() }
+        pcmTrack = null
+        player?.runCatching { stop(); release() }
+        player = null
+    }
     override fun release() = stop()
 }
