@@ -1,12 +1,84 @@
-# DEXTER • Appnova — Android Agent
+# J.A.R.V.I.S
 
-A real Android Kotlin agent prototype with a code-rendered animated orb, OpenRouter free-model discovery, Deepgram optional TTS, native fallback TTS, speech input, action planning and confirmation-gated native tools.
+مساعد ذكي عربي لأندرويد وويندوز: صوت عربي ذكوري، أوامر محلية بلا استهلاك رموز، وربط بين الهاتف والحاسوب.
 
-## Agent behavior
-The LLM produces structured JSON with an answer and suggested tools. A native validator enforces an allowlist, then the owner individually confirms tool execution. Supported tools: Android settings, browser URL, web search via browser, launch a visible installed app, share text, and clipboard. No unrestricted shell, accessibility abuse, hidden commands or arbitrary app input.
+> **اقرأ [`docs/BUILD_STATUS.md`](docs/BUILD_STATUS.md) أولًا.** يفصّل ما تحقّقتُ منه فعلًا وما لم يُبنَ بعد. لا شيء في هذا المستودع يوهم بوظيفة غير موجودة.
 
-## Setup
-Actions → Build Dexter Lab APK → Artifacts. Enter your own OpenRouter API key in Settings; select a currently-free model. Free models vary in availability, limits and reliability. Optionally enter Deepgram TTS key; Deepgram usage may cost money and chosen voices may not support Arabic. Keys are stored in Android app-private preferences (not encrypted at rest) and are never committed to source.
+## الحالة في سطر واحد
 
-## Honest limitations
-This is a functional *agent foundation*, not an all-powerful system assistant. AI may output invalid JSON; the UI will show the textual response without proposed actions. No PC integration, wake-word listening, background service, device-pairing, autonomous code execution, on-device scientific experiments or screen-reading yet. Actions need approval. Only the Android SpeechRecognizer handles STT; Deepgram is for TTS here. Device testing and performance profiling remain necessary.
+الخادم مبني ومختبَر (27/27)، تطبيق ويندوز مبني ومختبَر (65/65)، تطبيق أندرويد مكتوب ولم يُصرَّف بعد لعدم توفّر Android SDK في بيئة التطوير.
+
+## البنية
+
+```
+JARVIS/
+├── backend/   Cloudflare Worker + Durable Objects (TypeScript)
+├── android/   Kotlin + Jetpack Compose + Hilt
+├── windows/   Python + PySide6
+├── shared/    مخطّطات البروتوكول المشترك
+└── docs/      المعمارية، القرارات، حالة البناء، التقدّم
+```
+
+## التشغيل
+
+### الخادم
+
+```bash
+cd backend
+npm install          # .npmrc يضبط legacy-peer-deps، مطلوب لحلّ تبعيات wrangler
+npm test             # 27 اختبارًا داخل workerd
+npm run typecheck
+npm run dev          # محليًا على 8787
+```
+
+للنشر: ضع `CLOUDFLARE_API_TOKEN` كـ Secret في المستودع ودع `backend.yml` ينشر من `main`، أو انشر من حاسوبك بـ `npx wrangler deploy`.
+
+مفتاح محرّك النطق لا يُكتب في ملف:
+
+```bash
+npx wrangler secret put VOICE_API_KEY
+```
+
+### ويندوز
+
+```bash
+cd windows
+python -m venv .venv && .venv/Scripts/activate
+pip install -r requirements-dev.txt
+python -m pytest tests -q
+python -m jarvis_win
+```
+
+### أندرويد
+
+```bash
+cd android
+gradle wrapper --gradle-version 8.11.1   # مرّة واحدة، لتوليد ./gradlew
+./gradlew :app:testDebugUnitTest
+./gradlew :app:assembleDebug
+```
+
+لا يوجد `gradlew` في المستودع: لم أستطع توليد `gradle-wrapper.jar` دون شبكة، ولن أُضيف ملفًا ثنائيًا لم أولّده. سير البناء في GitHub Actions يثبّت Gradle مباشرة.
+
+## الأسرار
+
+لا يوجد أي مفتاح في هذا المستودع، ولن يوجد. `.gitignore` يحجب `*.env` و`.dev.vars` و`*.keystore` و`local.properties`.
+
+| السرّ | مكانه |
+|---|---|
+| مفتاح OpenRouter | على الجهاز: Android Keystore، أو مخزن اعتماد ويندوز |
+| رمز الجهاز | نفس المكان؛ وفي الخادم مُهشَّرًا فقط |
+| `CLOUDFLARE_API_TOKEN` | GitHub Secret |
+| `VOICE_API_KEY` | `wrangler secret put` |
+
+## الصوت
+
+الافتراضي `ar-DZ-IsmaelNeural` بـ `pitch=-15Hz` و`rate=-8%`.
+
+`edge-tts` يعتمد على واجهة غير رسمية لخدمة Microsoft: قد تتوقّف دون إشعار وهي غير مرخّصة تجاريًا. لذلك المحرّك خلف واجهة قابلة للاستبدال. وأنماط النطق (هادئ، جادّ، ودّي…) تُطبَّق بالـ prosody فقط، والخادم يصرّح بذلك في ترويسة `x-voice-style-applied` بدل الإيهام بتعبير عاطفي حقيقي.
+
+## الخطوات التالية
+
+1. رابط مستودع GitHub حتى يبدأ البناء الآلي وتُعرَف حالة تصريف أندرويد.
+2. فيديو الواجهة المرجعي — المرحلة السابعة موقوفة عليه.
+3. المرحلة الثالثة: التعرّف على الكلام والنطق العربي.
