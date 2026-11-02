@@ -157,7 +157,7 @@ fun SettingsScreen(
         Section(title = stringRes(R.string.settings_model)) {
             Text(settings.model, style = MaterialTheme.typography.bodyMedium)
             Text(
-                "استدعاء الأدوات يحتاج نموذجًا يدعمه. اضغط لتحميل النماذج التي تدعمه فعلًا.",
+                "نماذج Groq القادرة على تنفيذ الأدوات. قد تختلف الإتاحة بحسب حسابك؛ اختبر الاتصال قبل اختيار النموذج.",
                 color = TextDim,
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -183,7 +183,7 @@ fun SettingsScreen(
             }
             if (ui.toolCapableModels.isEmpty()) {
                 Text(
-                    "القائمة أعلاه مقترحات مجانية لم تُتحقَّق من هذا الجهاز بعد.",
+                    "هذه نماذج Groq مقترحة؛ اضغط «النماذج المدعومة» للتحقق من النماذج المتاحة لمفتاحك.",
                     color = TextDim,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -326,6 +326,8 @@ fun SettingsScreen(
                     "أصوات ديبڨرام إنجليزية — لا يملك أي صوت عربي. " +
                         "لذلك سيردّ جارفيس بالإنجليزية أيضًا، لأن صوتًا إنجليزيًا يقرأ نصًّا عربيًا يخرج كلامًا مشوّهًا. " +
                         "يستعمل نفس مفتاح ديبڨرام، ودرجة الصوت وسرعته تُطبَّقان عند التشغيل."
+                } else if (settings.voiceProvider == "groq") {
+                    "Orpheus العربي السعودي عبر Groq، بستة أصوات. يحتاج مفتاح Groq واتصال إنترنت. تكلفة حسب الاستعمال، ولا يدعم التحكم بنبرة الصوت عبر تعليمات المشاعر."
                 } else if (settings.voiceProvider == "azure") {
                     "يتّصل بأزور مباشرة بمفتاحك. إن تعذّر، ينطق محرّك الهاتف تلقائيًا."
                 } else if (settings.voiceProvider == "relay") {
@@ -397,6 +399,7 @@ fun SettingsScreen(
                 }
             }
 
+            if (settings.voiceProvider != "groq") {
             SliderRow(
                 label = stringRes(R.string.settings_pitch),
                 value = settings.voicePitch.removeSuffix("Hz").toFloatOrNull() ?: -15f,
@@ -411,6 +414,7 @@ fun SettingsScreen(
                 suffix = "%",
             ) { viewModel.setRate("${it.roundToInt()}%") }
 
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = viewModel::previewVoice) {
                     Text(if (ui.speaking) "إيقاف" else "سماع عيّنة")
