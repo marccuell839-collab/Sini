@@ -423,3 +423,44 @@ def play_pcm(pcm: bytes, sample_rate: int, stop_flag: threading.Event | None = N
             sd.sleep(50)
     except Exception:
         sd.wait()
+
+
+class GroqTtsProvider(TtsProvider):
+    """Groq Arabic Orpheus TTS. Keeps existing Azure and SAPI providers."""
+    id = "groq"
+    label = "Groq Orpheus (Arabic)"
+
+    def __init__(self, key: str | None) -> None:
+        self.key = key
+        self._stop = threading.Event()
+
+    def is_available(self) -> bool:
+        return bool(self.key)
+
+    def voices(self) -> list[Voice]:
+        return [Voice("abdullah", "Abdullah", "ar-SA", "Male", "groq")]
+
+    def speak(self, text: str, voice: str | None, pitch: str, rate: str) -> None:
+        import httpx
+        if not self.key:
+            raise TtsError("Groq API key required")
+        self._stop.clear()
+        for i in range(0, len(text), 180):
+            if self._stop.is_set():
+                break
+            try:
+                response = httpx.post(
+                    "https://api.groq.com/openai/v1/audio/speech",
+                    headers={"Authorization": f"Bearer {self.key}"},
+                    json={"model": "canopylabs/orpheus-arabic-saudi", "input": text[i:i+180],
+                          "voice": voice if voice in ("abdullah", "fahad", "sultan") else "abdullah",
+                          "response_format": "wav"},
+                    timeout=45.0,
+                )
+                response.raise_for_status()
+                play_mp3(response.content, self._stop)
+            except httpx.HTTPError as exc:
+                raise TtsError(f"Groq speech unavailable: {type(exc).__name__}") from exc
+
+    def stop(self) -> None:
+        self._stop.set()
