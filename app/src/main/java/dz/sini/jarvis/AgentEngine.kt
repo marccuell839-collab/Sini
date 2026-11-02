@@ -24,7 +24,7 @@ class AgentEngine(private val context: Context) {
         val system = """
 You are DEXTER, an Arabic-first Android device assistant and research partner.
 Respond with only a valid JSON object:
-{"reasoning_summary":"short user-facing plan, not private reasoning","answer":"helpful answer in user's language","tools":[{"id":"open_settings|open_url|web_search|open_app|share_text|copy_text","argument":"value","explanation":"why"}]}
+{"reasoning_summary":"short user-facing plan, not private reasoning","answer":"helpful answer in user's language","tools":[{"id":"open_settings|open_url|web_search|open_app|share_text|copy_text|tap_text|type_text|scroll_down|scroll_up|back|home","argument":"value","explanation":"why"}]}
 Device snapshot: $facts
 Tools are proposals, never claim execution. The user must approve each action.
 Only propose relevant tools; never invent installed apps or unavailable device capabilities.
@@ -61,12 +61,12 @@ Keep answer focused, useful, detailed when needed. Arabic Algerian speech is wel
             val parsed = parseJson(content)
             if (parsed == null) return AgentResult(content, emptyList(), listOf("الرد نصي؛ النموذج لم يرجع أوامر منظمة"))
             val tools = parsed.optJSONArray("tools") ?: JSONArray()
-            val allowed = setOf("open_settings", "open_url", "web_search", "open_app", "share_text", "copy_text")
+            val allowed = setOf("open_settings", "open_url", "web_search", "open_app", "share_text", "copy_text", "tap_text", "type_text", "scroll_down", "scroll_up", "back", "home")
             val proposals = (0 until minOf(tools.length(), 5)).mapNotNull { i ->
                 val t = tools.optJSONObject(i) ?: return@mapNotNull null
                 val id = t.optString("id")
                 val arg = t.optString("argument")
-                if (id !in allowed || arg.isBlank() || arg.length > 1600) null
+                if (id !in allowed || (arg.isBlank() && id !in setOf("scroll_down", "scroll_up", "back", "home")) || arg.length > 1600) null
                 else ToolProposal(id, arg, t.optString("explanation", id))
             }
             return AgentResult(parsed.optString("answer", content), proposals,
@@ -93,10 +93,28 @@ Keep answer focused, useful, detailed when needed. Arabic Algerian speech is wel
         "open_app" -> "▣ تشغيل تطبيق"
         "share_text" -> "⇧ مشاركة نص"
         "copy_text" -> "⧉ نسخ النص"
+        "tap_text" -> "الضغط على عنصر"
+        "type_text" -> "كتابة في حقل"
+        "scroll_down" -> "التمرير للأسفل"
+        "scroll_up" -> "التمرير للأعلى"
+        "back" -> "رجوع"
+        "home" -> "الرئيسية"
         else -> t.id
     }
     fun runApproved(t: ToolProposal) {
         when (t.id) {
+            "tap_text", "type_text", "scroll_down", "scroll_up", "back", "home" -> {
+                val access = DexterAccessibility.active ?: throw IllegalStateException("فعّل DEXTER في إعدادات إمكانية الوصول")
+                val ok = when (t.id) {
+                    "tap_text" -> access.tapText(t.argument)
+                    "type_text" -> access.typeText(t.argument)
+                    "scroll_down" -> access.scroll(true)
+                    "scroll_up" -> access.scroll(false)
+                    "back" -> access.pressBack()
+                    else -> access.pressHome()
+                }
+                require(ok) { "لم ينجح تنفيذ الأمر" }
+            }
             "open_settings" -> context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             "open_url" -> {
                 val u = Uri.parse(t.argument.trim())

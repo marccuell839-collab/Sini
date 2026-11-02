@@ -188,6 +188,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             text = "تشغيل الصوت"; setTextColor(light); isChecked = prefs.getBoolean("speak", true)
         }
         for (v in listOf(groqMode, groq, groqAudio, api, model, deep, voice, enabled)) add(box, v, 5)
+        val accessibility = Button(this).apply { text = "تفعيل التحكم باللمس والكتابة" }
+        add(box, accessibility)
+        accessibility.setOnClickListener { startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
         val pick = Button(this).apply { text = "تصفّح نماذج OpenRouter المجانية" }
         add(box, pick)
         pick.setOnClickListener { browseModels { selected -> model.setText(selected) } }
