@@ -21,6 +21,7 @@ import java.nio.ByteOrder
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.view.Gravity
 import android.view.View
 import android.widget.*
@@ -386,6 +387,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
     private fun speak(words: String) {
         if (!prefs.getBoolean("speak", true)) return
+        voicePlaying = true
         val groqKey = prefs.getString("groq", "") ?: ""
         if (prefs.getBoolean("groq_audio", true) && groqKey.isNotBlank()) {
             speakOrpheus(words, groqKey)
@@ -410,11 +412,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     media?.release()
                     media = MediaPlayer().apply {
                         setDataSource(audio.absolutePath); prepare()
-                        setOnCompletionListener { it.release(); if (media === it) media = null }
+                        setOnCompletionListener { it.release(); if (media === it) media = null; voicePlaying = false }
                         start()
                     }
                 }
-            } catch (_: Exception) { runOnUiThread { speakLocal(words) } }
+            } catch (_: Exception) { runOnUiThread { voicePlaying = false; speakLocal(words) } }
             finally { conn?.disconnect() }
         }
     }
@@ -448,9 +450,15 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
     private fun speakLocal(words: String) {
         if (ttsReady) {
+            voicePlaying = true
+            tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {}
+                override fun onDone(utteranceId: String?) { voicePlaying = false }
+                override fun onError(utteranceId: String?) { voicePlaying = false }
+            })
             tts.language = Locale("ar")
             tts.speak(words, TextToSpeech.QUEUE_FLUSH, null, "dexter-response")
-        }
+        } else voicePlaying = false
     }
     override fun onInit(status: Int) { ttsReady = status == TextToSpeech.SUCCESS }
     override fun onDestroy() {
