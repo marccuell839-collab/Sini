@@ -32,6 +32,7 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
     @Volatile private var conversationUntil = 0L
     private val requestInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
     @Volatile private var microphoneThreshold = 0.019f
+    @Volatile private var lastError = ""
     @Volatile private var recording = false
     @Volatile private var speaking = false
     private var tts: android.speech.tts.TextToSpeech? = null
@@ -163,10 +164,11 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
         if (!OwnerVoiceProfile.accepts(this, pcm)) {
             requestInFlight.set(false)
             visualMode = "idle"
+            lastError = "Owner Voice Only رفض الصوت. جرّب تعطيله مؤقتاً من الإعدادات"
             return
         }
         val key=prefs.getString("groq","") ?: ""
-        if(key.isBlank()) { requestInFlight.set(false); return }
+        if(key.isBlank()) { lastError = "Groq API Key غير موجود"; visualMode = "error"; requestInFlight.set(false); return }
         thread(name="DexterSpeechToText") {
             try {
                 val wav=ByteArrayOutputStream()
@@ -188,11 +190,20 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
                     c.setRequestProperty("Authorization","Bearer $key")
                     c.setRequestProperty("Content-Type","multipart/form-data; boundary=$boundary")
                     c.doOutput=true;c.outputStream.use {it.write(body.toByteArray())}
-                    if(c.responseCode !in 200..299)return@thread
+                    if(c.responseCode !in 200..299) {
+                        lastError = "Groq STT HTTP ${c.responseCode}: " + (c.errorStream?.bufferedReader()?.use { it.readText() } ?: "").take(150)
+                        visualMode = "error"
+                        return@thread
+                    }
                     val phrase=JSONObject(c.inputStream.bufferedReader().use{it.readText()}).optString("text").lowercase()
-                    val wake = Regex("""(?i)(?<![\\p{L}])(?:ديكستر|دكستر|دِكستر|دِيْكْسْتَر|ديكستار|دكستار|ديكستير|دكستير|ديكستَر|دكستَر|دكستِر|دكسترر|ديكسترر|dexter|dextar|dekster|dexterrr|deckster)(?![\\p{L}])""").find(
-                        phrase.replace(Regex("[\\u064B-\\u065F\\u0670]"), "")
-                    )?.value
+                    val normalized = phrase.replace(Regex("[\\u064B-\\u065F\\u0670]"), "")
+                    val wake = listOf("ديكستر", "دكستر", "ديكستار", "دكستار",
+                        "ديكستير", "دكستير", "dexter", "dextar", "dekster", "deckster")
+                        .firstOrNull { normalized.contains(it) }
+                    if (phrase.isBlank()) {
+                        lastError = "Whisper لم يُرجع كلاماً واضحاً"
+                        return@thread
+                    }
                     val explicit = wakeAlreadyDetected || wake != null
                     val directed = explicit || SystemClock.elapsedRealtime() < conversationUntil ||
                         isClearlyDirected(phrase) || isAddressedByModel(phrase, key)
@@ -215,7 +226,7 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
                         } catch (_:Exception){say("تعذر الاتصال بالمخ سيدي")}
                     }
                 } finally {c.disconnect()}
-            } catch (_:Exception){} finally { requestInFlight.set(false) }
+            } catch (e:Exception) { lastError = "Speech error: " + (e.message ?: e.javaClass.simpleName); visualMode = "error" } finally { requestInFlight.set(false) }
         }
     }
     private fun isClearlyDirected(input: String): Boolean {
