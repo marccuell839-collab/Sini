@@ -210,28 +210,31 @@ object ModelCapabilities {
 
     data class Caps(val id: String, val tools: Boolean, val vision: Boolean, val contextLength: Int)
 
+    /** Groq's /models response does not expose OpenRouter supported_parameters. */
     fun parseModels(body: JsonObject): List<Caps> =
         body["data"]?.jsonArray.orEmpty().mapNotNull { element ->
             val model = element.jsonObject
             val id = model["id"]?.jsonPrimitive?.content ?: return@mapNotNull null
-            val params = model["supported_parameters"]?.jsonArray.orEmpty()
-                .mapNotNull { it.jsonPrimitive.content }
-            val modalities = model["architecture"]?.jsonObject
-                ?.get("input_modalities")?.jsonArray.orEmpty()
-                .mapNotNull { it.jsonPrimitive.content }
+            val active = model["active"]?.jsonPrimitive?.content != "false"
+            if (!active) return@mapNotNull null
+            val toolIds = setOf(
+                "openai/gpt-oss-20b", "openai/gpt-oss-120b",
+                "llama-3.3-70b-versatile", "llama-3.1-8b-instant",
+                "qwen/qwen3.8-27b", "minimaxai/minimax-m2.7"
+            )
             Caps(
                 id = id,
-                tools = "tools" in params || "tool_choice" in params,
-                vision = "image" in modalities,
-                contextLength = model["context_length"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
+                tools = id in toolIds,
+                vision = false,
+                contextLength = model["context_window"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
             )
         }
 
-    /** Free, tool-capable models worth defaulting to on OpenRouter's free tier. */
     val SUGGESTED_FREE = listOf(
-        "meta-llama/llama-3.3-70b-instruct:free",
-        "qwen/qwen-2.5-72b-instruct:free",
-        "mistralai/mistral-small-3.1-24b-instruct:free",
+        "openai/gpt-oss-20b",
+        "openai/gpt-oss-120b",
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
     )
 }
 
