@@ -20,6 +20,8 @@ import kotlin.math.sqrt
 class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitListener {
     companion object {
         @Volatile var running = false
+        @Volatile var audioLevel = 0f
+        @Volatile var visualMode = "idle"
         private const val CHANNEL = "dexter_listening"
         private const val NOTICE = 9204
         private const val STOP = "dz.appnova.dexter.STOP"
@@ -63,22 +65,7 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
     private fun showEyes() {
         if (!Settings.canDrawOverlays(this) || eyes != null) return
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        val view = object : View(this) {
-            private val paint = Paint(3)
-            override fun onDraw(canvas: Canvas) {
-                val w = width.toFloat(); val h = height.toFloat()
-                paint.color = Color.argb(230, 5, 17, 28)
-                canvas.drawRoundRect(0f, 0f, w, h, h/2, h/2, paint)
-                val glowing = if (speaking) Color.CYAN else Color.rgb(0, 218, 255)
-                for (x in floatArrayOf(w*.33f, w*.67f)) {
-                    paint.color = glowing
-                    canvas.drawOval(x-13f, h*.30f, x+13f, h*.70f, paint)
-                    paint.color = Color.WHITE
-                    canvas.drawCircle(x-3f, h*.43f, 3f, paint)
-                }
-                postInvalidateDelayed(160)
-            }
-        }
+        val view = DexterEyesOverlayView(this)
         val p = WindowManager.LayoutParams(
             (94 * resources.displayMetrics.density).toInt(),
             (35 * resources.displayMetrics.density).toInt(),
@@ -112,9 +99,12 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
                     while (recording) {
                         val count = audio.read(block,0,block.size)
                         if (count <= 0) continue
-                        if (speaking) { utterance.reset(); start=0; voiceBlocks=0; continue }
+                        if (speaking) { audioLevel = 0f; visualMode = "speaking"; utterance.reset(); start=0; voiceBlocks=0; continue }
                         var power = 0.0
                         for (i in 0 until count) { val v=block[i].toDouble()/32768;power+=v*v }
+                        val level=sqrt(power/count).toFloat()
+                        audioLevel = audioLevel*.72f + (level*10f).coerceIn(0f,1f)*.28f
+                        visualMode = if(level>.024f) "listening" else "idle"
                         val now=SystemClock.elapsedRealtime()
                         if (sqrt(power/count)>0.024) {
                             last=now;voiceBlocks++
@@ -160,6 +150,7 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
                     val phrase=JSONObject(c.inputStream.bufferedReader().use{it.readText()}).optString("text").lowercase()
                     val wake=listOf("ديكستر","دكستر","dexter").firstOrNull{phrase.contains(it)}?:return@thread
                     val command=phrase.substringAfter(wake).trim()
+                    visualMode="thinking"
                     if(command.isBlank()) {say("نعم سيدي");return@thread}
                     if ((command.contains("افتح") || command.contains("شغل")) &&
                         (command.contains("كاميرا") || command.contains("الكاميرا") || command.contains("camera"))) {
@@ -178,18 +169,19 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
     }
     private fun say(message:String) {
         speaking=true
+        visualMode="speaking"
         val audio=tts
         if(audio==null) { speaking=false;return }
         audio.language=java.util.Locale("ar")
         audio.setOnUtteranceProgressListener(object:android.speech.tts.UtteranceProgressListener(){
             override fun onStart(id:String?){}
-            override fun onDone(id:String?){speaking=false}
-            override fun onError(id:String?){speaking=false}
+            override fun onDone(id:String?){speaking=false;visualMode="idle"}
+            override fun onError(id:String?){speaking=false;visualMode="idle"}
         })
         audio.speak(message,android.speech.tts.TextToSpeech.QUEUE_FLUSH,null,"dexter-bg")
     }
     override fun onDestroy() {
-        recording=false;running=false
+        recording=false;running=false;audioLevel=0f;visualMode="idle"
         eyes?.let {try{windows?.removeView(it)}catch (_:Exception){}}
         eyes=null
         tts?.stop();tts?.shutdown()
