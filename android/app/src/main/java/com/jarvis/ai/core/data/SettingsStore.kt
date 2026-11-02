@@ -29,7 +29,7 @@ data class JarvisSettings(
      * phone's own engine.
      */
     val voiceProvider: String = "groq",
-    val voice: String = "abdullah",
+    val voice: String = "aisha",
     val voicePitch: String = "-15Hz",
     val voiceRate: String = "-8%",
     val autoSpeak: Boolean = true,
