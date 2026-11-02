@@ -41,8 +41,8 @@ object DeepgramUrl {
     fun build(
         language: String = "ar",
         sampleRate: Int = 16_000,
-        endpointingMs: Int = 700,
-        utteranceEndMs: Int = 1_000,
+        endpointingMs: Int = 1700,
+        utteranceEndMs: Int = 2000,
     ): String {
         val params = listOf(
             "model" to MODEL,
