@@ -26,7 +26,11 @@ class GroqTtsProvider(
     override suspend fun isAvailable() = !secureStore.openRouterKey.isNullOrBlank()
     override suspend fun voices() = listOf(
         VoiceOption("abdullah", "Abdullah", "ar-SA", "صوت عربي رجالي"),
-        VoiceOption("fahad", "Fahad", "ar-SA", "صوت عربي رجالي")
+        VoiceOption("fahad", "Fahad", "ar-SA", "صوت عربي رجالي"),
+        VoiceOption("sultan", "Sultan", "ar-SA", "صوت عربي رجالي"),
+        VoiceOption("lulwa", "Lulwa", "ar-SA", "صوت عربي نسائي"),
+        VoiceOption("noura", "Noura", "ar-SA", "صوت عربي نسائي"),
+        VoiceOption("aisha", "Aisha", "ar-SA", "صوت عربي نسائي")
     )
     override suspend fun speak(text: String, voice: String, pitch: String, rate: String, onAmplitude: ((Float) -> Unit)?) {
         val key = secureStore.openRouterKey ?: throw TtsException("مفتاح Groq غير موجود")
