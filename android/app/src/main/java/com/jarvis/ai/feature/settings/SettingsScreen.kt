@@ -114,7 +114,7 @@ fun SettingsScreen(
                 value = keyInput,
                 onValueChange = { keyInput = it },
                 label = { Text(stringRes(R.string.settings_api_key)) },
-                placeholder = { Text("sk-or-...", color = TextDim) },
+                placeholder = { Text("gsk_...", color = TextDim) },
                 // The key is never rendered back in clear text.
                 visualTransformation = PasswordVisualTransformation(),
                 singleLine = true,
@@ -291,6 +291,11 @@ fun SettingsScreen(
         // ------------------------------------------------------- voice
         Section(title = stringRes(R.string.settings_voice)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = settings.voiceProvider == "groq",
+                    onClick = { viewModel.setVoiceProvider("groq"); viewModel.setVoice("abdullah") },
+                    label = { Text("Groq • Orpheus العربي") },
+                )
                 FilterChip(
                     selected = settings.voiceProvider == "azure",
                     onClick = { viewModel.setVoiceProvider("azure") },
