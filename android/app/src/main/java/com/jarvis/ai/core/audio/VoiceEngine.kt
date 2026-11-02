@@ -24,6 +24,7 @@ class VoiceEngine @Inject constructor(
     secureStore: SecureStore,
 ) {
 
+    private val groq = GroqTtsProvider(http, secureStore, context.cacheDir)
     private val system = SystemTtsProvider(context)
     private val azureStream = AzureStreamingTts(http, secureStore)
     private val azure = AzureTtsProvider(http, secureStore, context.cacheDir)
@@ -46,7 +47,7 @@ class VoiceEngine @Inject constructor(
      * paired backend, and the device engine always works as a last resort.
      */
     val providers: List<TtsProvider>
-        get() = listOf(azureStream, azure, deepgramStream, deepgram, relay, system)
+        get() = listOf(groq, azureStream, azure, deepgramStream, deepgram, relay, system)
 
     suspend fun availableProviders(): List<TtsProvider> = providers.filter { it.isAvailable() }
 
@@ -84,13 +85,14 @@ class VoiceEngine @Inject constructor(
         // arrives while the sentence is still being synthesised instead of
         // after. REST stays behind it, so a blocked WebSocket still speaks.
         val ordered = when (preferredProviderId) {
+            "groq" -> listOf(groq, deepgramStream, deepgram, azureStream, azure, system)
             "system" -> listOf(system, azureStream, azure, deepgramStream, deepgram, relay)
             "azure", "azure-stream" ->
                 listOf(azureStream, azure, relay, deepgramStream, deepgram, system)
             "deepgram", "deepgram-stream" ->
                 listOf(deepgramStream, deepgram, azureStream, azure, system)
             "relay" -> listOf(relay, azureStream, azure, deepgramStream, deepgram, system)
-            else -> listOf(azureStream, azure, deepgramStream, deepgram, relay, system)
+            else -> listOf(groq, azureStream, azure, deepgramStream, deepgram, relay, system)
         }
 
         requestFocus()
