@@ -293,8 +293,8 @@ fun SettingsScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = settings.voiceProvider == "groq",
-                    onClick = { viewModel.setVoiceProvider("groq"); viewModel.setVoice("abdullah") },
-                    label = { Text("Groq • Orpheus العربي") },
+                    onClick = { viewModel.setVoiceProvider("groq"); viewModel.setVoice("aisha") },
+                    label = { Text("Groq • عائشة (صوت لورا)") },
                 )
                 FilterChip(
                     selected = settings.voiceProvider == "azure",
