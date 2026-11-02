@@ -4,6 +4,7 @@ import android.media.AudioAttributes
 import android.media.MediaPlayer
 import com.jarvis.ai.core.data.SecureStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -34,10 +35,10 @@ class GroqTtsProvider(
     )
     override suspend fun speak(text: String, voice: String, pitch: String, rate: String, onAmplitude: ((Float) -> Unit)?) {
         val key = secureStore.openRouterKey ?: throw TtsException("مفتاح Groq غير موجود")
-        for (part in text.chunked(180)) {
+        for (part in splitForSpeech(text)) {
             val file = withContext(Dispatchers.IO) {
                 val body = JSONObject().put("model", "canopylabs/orpheus-arabic-saudi")
-                    .put("input", part).put("voice", if (voice in listOf("abdullah", "fahad", "sultan", "lulwa", "noura", "aisha")) voice else "abdullah")
+                    .put("input", part.trimEnd().let { if (it.lastOrNull() in listOf('.', '!', '?', '؟')) it else "$it." }).put("voice", if (voice in listOf("abdullah", "fahad", "sultan", "lulwa", "noura", "aisha")) voice else "abdullah")
                     .put("response_format", "wav")
                 val request = Request.Builder().url("https://api.groq.com/openai/v1/audio/speech")
                     .header("Authorization", "Bearer $key")
@@ -48,9 +49,25 @@ class GroqTtsProvider(
                     File.createTempFile("groq-", ".wav", cacheDir).also { it.writeBytes(bytes) }
                 }
             }
-            try { playFile(file) } finally { file.delete() }
+            try { playFile(file); delay(180) } finally { file.delete() }
         }
     }
+    /** Split on phrase or word boundaries to prevent cutting Arabic syllables. */
+    private fun splitForSpeech(text: String): List<String> {
+        val normalized = text.trim().replace(Regex("\\s+"), " ")
+        if (normalized.length <= 180) return listOf(normalized)
+        val result = mutableListOf<String>()
+        var remaining = normalized
+        while (remaining.length > 180) {
+            val boundary = remaining.substring(0, 180).indexOfLast { it in "،؛.!؟? " }
+            val cut = if (boundary >= 75) boundary + 1 else 180
+            result.add(remaining.substring(0, cut).trim())
+            remaining = remaining.substring(cut).trimStart()
+        }
+        if (remaining.isNotBlank()) result.add(remaining)
+        return result
+    }
+
     private suspend fun playFile(file: File) = suspendCancellableCoroutine<Unit> { cont ->
         stop()
         val mp = MediaPlayer().apply {
