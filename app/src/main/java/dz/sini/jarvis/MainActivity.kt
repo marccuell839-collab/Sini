@@ -250,7 +250,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 startActivity(camera)
                 status.text = "✓ الكاميرا"
             } catch (e: Exception) { status.text = "تعذر فتح الكاميرا: ${e.message}" }
-            pauseUntil = android.os.SystemClock.uptimeMillis() + 3500L
+            // Camera opens without restarting the microphone capture session.
             return
         }
         runAgent(command)
