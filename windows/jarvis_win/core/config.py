@@ -48,9 +48,9 @@ class Settings:
     backend_url: str = ""
     model: str = "openai/gpt-oss-20b"
     routing_mode: str = "balanced"  # economy | balanced | quality
-    voice: str = "ar-DZ-IsmaelNeural"
+    voice: str = "abdullah"
     # "sapi5" for the voices installed in Windows, "azure" for the neural ones.
-    tts_provider: str = "sapi5"
+    tts_provider: str = "groq"
     # "whisper" runs locally, "azure" is faster but needs a key.
     stt_provider: str = "whisper"
     whisper_model: str = "small"
