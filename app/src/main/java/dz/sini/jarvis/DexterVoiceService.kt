@@ -16,6 +16,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.concurrent.thread
 import kotlin.math.sqrt
+import ai.picovoice.porcupine.Porcupine
 
 class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitListener {
     companion object {
@@ -27,6 +28,7 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
         private const val STOP = "dz.appnova.dexter.STOP"
     }
     private var recorder: AudioRecord? = null
+    private var detector: Porcupine? = null
     @Volatile private var recording = false
     @Volatile private var speaking = false
     private var tts: android.speech.tts.TextToSpeech? = null
@@ -91,10 +93,21 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
             recorder = audio
             audio.startRecording()
             recording = true
+            val wakeKey = prefs.getString("picovoice", "") ?: ""
+            val wakePath = prefs.getString("picovoice_model", "") ?: ""
+            detector = if (wakeKey.isNotBlank() && java.io.File(wakePath).isFile) {
+                try {
+                    Porcupine.Builder().setAccessKey(wakeKey).setKeywordPath(wakePath)
+                        .setSensitivity(0.72f).build(this)
+                } catch (_: Exception) { null }
+            } else null
             thread(name="DexterBackgroundMicrophone") {
                 val block = ShortArray(1600)
                 val utterance = ByteArrayOutputStream()
                 var start = 0L; var last = 0L; var voiceBlocks = 0
+                var armedUntil = 0L
+                var lastWake = 0L
+                val wakeBuffer = ArrayList<Short>()
                 try {
                     while (recording) {
                         val count = audio.read(block,0,block.size)
@@ -106,6 +119,24 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
                         audioLevel = audioLevel*.72f + (level*10f).coerceIn(0f,1f)*.28f
                         visualMode = if(level>.024f) "listening" else "idle"
                         val now=SystemClock.elapsedRealtime()
+                        val wake = detector
+                        if (wake != null && now >= armedUntil) {
+                            for (i in 0 until count) wakeBuffer.add(block[i])
+                            val frameSize = wake.frameLength
+                            while (wakeBuffer.size >= frameSize) {
+                                val frame = ShortArray(frameSize) { i -> wakeBuffer[i] }
+                                wakeBuffer.subList(0, frameSize).clear()
+                                try {
+                                    if (wake.process(frame) >= 0 && now - lastWake > 1800L) {
+                                        armedUntil = now + 12000L
+                                        lastWake = now
+                                        visualMode = "thinking"
+                                        android.os.Handler(Looper.getMainLooper()).post { say("نعم سيدي") }
+                                        break
+                                    }
+                                } catch (_: Exception) {}
+                            }
+                        }
                         if (sqrt(power/count)>0.024) {
                             last=now;voiceBlocks++
                             if (start==0L && voiceBlocks>=2) {start=now; utterance.reset()}
@@ -114,7 +145,10 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
                             for (i in 0 until count) { val v=block[i].toInt();utterance.write(v and 255);utterance.write((v shr 8) and 255) }
                             if (now-last>1150 || now-start>17000) {
                                 val pcm=utterance.toByteArray();utterance.reset();start=0;voiceBlocks=0
-                                if (pcm.size>7000) recognize(pcm)
+                                if (pcm.size>7000 && (detector == null || now < armedUntil)) {
+                                    recognize(pcm, detector != null)
+                                    if (detector != null) armedUntil = 0L
+                                }
                             }
                         }
                     }
@@ -122,7 +156,7 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
             }
         } catch (_: Exception) { stopSelf() }
     }
-    private fun recognize(pcm: ByteArray) {
+    private fun recognize(pcm: ByteArray, wakeAlreadyDetected: Boolean = false) {
         val key=prefs.getString("groq","") ?: ""
         if(key.isBlank()) return
         thread(name="DexterSpeechToText") {
@@ -148,8 +182,9 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
                     c.doOutput=true;c.outputStream.use {it.write(body.toByteArray())}
                     if(c.responseCode !in 200..299)return@thread
                     val phrase=JSONObject(c.inputStream.bufferedReader().use{it.readText()}).optString("text").lowercase()
-                    val wake=listOf("ديكستر","دكستر","dexter").firstOrNull{phrase.contains(it)}?:return@thread
-                    val command=phrase.substringAfter(wake).trim()
+                    val wake=listOf("ديكستر","دكستر","dexter").firstOrNull{phrase.contains(it)}
+                    if (!wakeAlreadyDetected && wake == null) return@thread
+                    val command = if (wakeAlreadyDetected) phrase.trim() else phrase.substringAfter(wake!!).trim()
                     visualMode="thinking"
                     if(command.isBlank()) {say("نعم سيدي");return@thread}
                     if ((command.contains("افتح") || command.contains("شغل")) &&
@@ -182,6 +217,7 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
     }
     override fun onDestroy() {
         recording=false;running=false;audioLevel=0f;visualMode="idle"
+        detector?.delete(); detector = null
         eyes?.let {try{windows?.removeView(it)}catch (_:Exception){}}
         eyes=null
         tts?.stop();tts?.shutdown()
