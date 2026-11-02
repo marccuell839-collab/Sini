@@ -1,8 +1,9 @@
-name: Replace Sini from uploaded Jar ZIP
+name: Replace Sini from original Jar and configure Groq
 on:
   push:
     paths:
-      - 'Jar-Groq-Modified.zip'
+      - 'Jar-main.zip'
+      - '.github/workflows/replace-with-jar.yml'
   workflow_dispatch:
 permissions:
   contents: write
@@ -18,9 +19,9 @@ jobs:
         run: |
           python3 - <<'PY'
           import os, shutil, zipfile, pathlib
-          archive=pathlib.Path("Jar-Groq-Modified.zip")
+          archive=pathlib.Path("Jar-main.zip")
           if not archive.is_file():
-              raise SystemExit("Upload Jar-Groq-Modified.zip to repository root first.")
+              raise SystemExit("Upload Jar-main.zip to repository root first.")
           with zipfile.ZipFile(archive) as z:
               entries=[e for e in z.infolist() if not e.is_dir()]
               if len(entries)<20: raise SystemExit("Archive appears incomplete")
@@ -48,11 +49,60 @@ jobs:
               for item in stage.iterdir():
                   shutil.move(str(item),str(pathlib.Path(".")/item.name))
           PY
+      - name: Switch OpenRouter AI endpoints to Groq; preserve Deepgram
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          def patch(path, edits):
+              p=Path(path)
+              if not p.exists(): raise RuntimeError(f'Missing source: {path}')
+              s=p.read_text(encoding='utf-8')
+              for old,new in edits:
+                  if old not in s: raise RuntimeError(f'Cannot locate expected source in {path}: {old[:65]}')
+                  s=s.replace(old,new)
+              p.write_text(s,encoding='utf-8')
+          patch('backend/src/index.ts', [
+              ('https://openrouter.ai/api/v1','https://api.groq.com/openai/v1'),
+              ('X-OpenRouter-Key','X-Groq-Key'),
+              ('x-openrouter-key','x-groq-key'),
+          ])
+          patch('android/app/src/main/java/com/jarvis/ai/core/data/SettingsStore.kt', [
+              ('anthropic/claude-3.5-haiku','openai/gpt-oss-20b'),
+              ('val voiceProvider: String = "azure"','val voiceProvider: String = "groq"'),
+              ('val voice: String = "ar-DZ-IsmaelNeural"','val voice: String = "abdullah"'),
+          ])
+          patch('android/app/src/main/java/com/jarvis/ai/core/data/SecureStore.kt', [
+              ('openrouter_api_key','groq_api_key')
+          ])
+          patch('android/app/src/main/java/com/jarvis/ai/core/net/OpenRouterClient.kt', [
+              ('https://openrouter.ai/api/v1','https://api.groq.com/openai/v1'),
+              ('مفتاح OpenRouter','مفتاح Groq'),
+          ])
+          patch('android/app/src/main/java/com/jarvis/ai/feature/settings/SettingsViewModel.kt', [
+              ('sk-or-','gsk_'),('مفتاح OpenRouter','مفتاح Groq'),
+          ])
+          patch('android/app/src/main/java/com/jarvis/ai/feature/home/HomeScreen.kt', [
+              ('مفتاح OpenRouter','مفتاح Groq'),
+          ])
+          patch('android/app/src/main/java/com/jarvis/ai/feature/home/HomeViewModel.kt', [
+              ('مفتاح OpenRouter','مفتاح Groq'),
+          ])
+          patch('windows/jarvis_win/core/client.py', [
+              ('x-openrouter-key','x-groq-key'),
+          ])
+          patch('windows/jarvis_win/core/config.py', [
+              ('openrouter_api_key','groq_api_key'),
+              ('anthropic/claude-3.5-haiku','openai/gpt-oss-20b'),
+          ])
+          print('Groq AI endpoint patch applied; Deepgram untouched')
+          PY
       - name: Commit exact extracted project
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git diff --cached --quiet || git commit -m "Replace Sini completely with Jar Groq project"
+          git diff --cached --quiet || git commit -m "Replace Sini with extracted Jar source and Groq AI endpoints"
           git push
