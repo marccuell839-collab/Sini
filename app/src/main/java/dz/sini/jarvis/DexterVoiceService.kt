@@ -181,7 +181,9 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
                     c.doOutput=true;c.outputStream.use {it.write(body.toByteArray())}
                     if(c.responseCode !in 200..299)return@thread
                     val phrase=JSONObject(c.inputStream.bufferedReader().use{it.readText()}).optString("text").lowercase()
-                    val wake=listOf("ديكستر","دكستر","dexter").firstOrNull{phrase.contains(it)}
+                    val wake = Regex("""(?i)(?<![\\p{L}])(?:ديكستر|دكستر|دِكستر|دِيْكْسْتَر|ديكستار|دكستار|ديكستير|دكستير|ديكستَر|دكستَر|دكستِر|دكسترر|ديكسترر|dexter|dextar|dekster|dexterrr|deckster)(?![\\p{L}])""").find(
+                        phrase.replace(Regex("[\\u064B-\\u065F\\u0670]"), "")
+                    )?.value
                     if (!wakeAlreadyDetected && wake == null) return@thread
                     val command = if (wakeAlreadyDetected) {
                         if (wake != null) phrase.substringAfter(wake).trim() else phrase.trim()
