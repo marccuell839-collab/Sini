@@ -43,10 +43,11 @@ jobs:
               if not (stage/"README.md").exists() or not (stage/"android").is_dir():
                   raise SystemExit("Required project files missing. Aborting.")
               for item in pathlib.Path(".").iterdir():
-                  if item.name==".git": continue
+                  if item.name in (".git", ".github"): continue
                   if item.is_dir(): shutil.rmtree(item)
                   else: item.unlink()
               for item in stage.iterdir():
+                  if item.name == ".github": continue
                   shutil.move(str(item),str(pathlib.Path(".")/item.name))
           PY
       - name: Switch OpenRouter AI endpoints to Groq; preserve Deepgram
@@ -98,7 +99,7 @@ jobs:
           ])
           print('Groq AI endpoint patch applied; Deepgram untouched')
           PY
-      - name: Commit exact extracted project
+      - name: Commit extracted project without workflow changes
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
