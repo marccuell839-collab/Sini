@@ -156,6 +156,10 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
         } catch (_: Exception) { stopSelf() }
     }
     private fun recognize(pcm: ByteArray, wakeAlreadyDetected: Boolean = false) {
+        if (!OwnerVoiceProfile.accepts(this, pcm)) {
+            visualMode = "idle"
+            return
+        }
         val key=prefs.getString("groq","") ?: ""
         if(key.isBlank()) return
         thread(name="DexterSpeechToText") {
