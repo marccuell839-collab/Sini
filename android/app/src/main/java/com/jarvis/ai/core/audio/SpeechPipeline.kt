@@ -23,6 +23,7 @@ class SpeechPipeline(
     private val scope: CoroutineScope,
     private val speak: suspend (String) -> Unit,
     private val onError: (String) -> Unit = {},
+    private val bufferUntilFinish: Boolean = false,
 ) {
 
     private val chunks = Channel<String>(Channel.UNLIMITED)
@@ -35,6 +36,7 @@ class SpeechPipeline(
         if (delta.isEmpty()) return
         ensureConsumer()
         buffer.append(delta)
+        if (bufferUntilFinish) return
 
         while (true) {
             val cut = nextCut(buffer.toString(), isFirst = !started) ?: break
