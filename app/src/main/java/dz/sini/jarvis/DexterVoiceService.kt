@@ -131,7 +131,6 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
                                         armedUntil = now + 12000L
                                         lastWake = now
                                         visualMode = "thinking"
-                                        android.os.Handler(Looper.getMainLooper()).post { say("نعم سيدي") }
                                         break
                                     }
                                 } catch (_: Exception) {}
@@ -184,7 +183,9 @@ class DexterVoiceService : Service(), android.speech.tts.TextToSpeech.OnInitList
                     val phrase=JSONObject(c.inputStream.bufferedReader().use{it.readText()}).optString("text").lowercase()
                     val wake=listOf("ديكستر","دكستر","dexter").firstOrNull{phrase.contains(it)}
                     if (!wakeAlreadyDetected && wake == null) return@thread
-                    val command = if (wakeAlreadyDetected) phrase.trim() else phrase.substringAfter(wake!!).trim()
+                    val command = if (wakeAlreadyDetected) {
+                        if (wake != null) phrase.substringAfter(wake).trim() else phrase.trim()
+                    } else phrase.substringAfter(wake!!).trim()
                     visualMode="thinking"
                     if(command.isBlank()) {say("نعم سيدي");return@thread}
                     if ((command.contains("افتح") || command.contains("شغل")) &&
