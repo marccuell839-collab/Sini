@@ -22,7 +22,7 @@ class GroqTtsProvider(
     private val cacheDir: File,
 ) : TtsProvider {
     override val id = "groq"
-    override val label = "Groq Orpheus • عبدالله"
+    override val label = "Groq Orpheus • عائشة"
     @Volatile private var player: MediaPlayer? = null
     override suspend fun isAvailable() = !secureStore.openRouterKey.isNullOrBlank()
     override suspend fun voices() = listOf(
@@ -38,13 +38,16 @@ class GroqTtsProvider(
         for (part in splitForSpeech(text)) {
             val file = withContext(Dispatchers.IO) {
                 val body = JSONObject().put("model", "canopylabs/orpheus-arabic-saudi")
-                    .put("input", part.trimEnd().let { if (it.lastOrNull() in listOf('.', '!', '?', '؟')) it else "$it." }).put("voice", if (voice in listOf("abdullah", "fahad", "sultan", "lulwa", "noura", "aisha")) voice else "abdullah")
+                    .put("input", part.trimEnd().let { if (it.lastOrNull() in listOf('.', '!', '?', '؟')) it else "$it." }).put("voice", if (voice in listOf("abdullah", "fahad", "sultan", "lulwa", "noura", "aisha")) voice else "aisha")
                     .put("response_format", "wav")
                 val request = Request.Builder().url("https://api.groq.com/openai/v1/audio/speech")
                     .header("Authorization", "Bearer $key")
                     .post(body.toString().toRequestBody("application/json".toMediaType())).build()
                 http.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) throw TtsException("Groq TTS HTTP ${response.code}")
+                    if (!response.isSuccessful) {
+                        val detail = response.body?.string().orEmpty().take(300)
+                        throw TtsException("فشل صوت عائشة (Groq HTTP ${response.code}): $detail")
+                    }
                     val bytes = response.body?.bytes() ?: throw TtsException("Empty Groq response")
                     File.createTempFile("groq-", ".wav", cacheDir).also { it.writeBytes(bytes) }
                 }
