@@ -54,6 +54,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private var destroyed = false
     private var pendingWake = false
     private var audioPaused = false
+    private val keywordImportCode = 8603
     private var capturingSpeech = false
 
     private fun dp(n: Int) = (resources.displayMetrics.density * n).toInt()
@@ -224,6 +225,15 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), 0)
             setBackgroundColor(Color.rgb(11, 25, 40))
         }
+        val wakeKey = settingsField("Picovoice AccessKey", prefs.getString("picovoice", "") ?: "", true)
+        val importModel = Button(this).apply { text = "استيراد ملف Dexter Android (.ppn)" }
+        add(box, importModel)
+        importModel.setOnClickListener {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                type = "*/*"
+                addCategory(Intent.CATEGORY_OPENABLE)
+            }, keywordImportCode)
+        }
         val groq = settingsField("Groq API Key • GPT-OSS + Orpheus", prefs.getString("groq", "") ?: "", true)
         val groqMode = CheckBox(this).apply {
             text = "استعمال Groq GPT-OSS 20B كمخ رئيسي"
@@ -240,7 +250,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val enabled = CheckBox(this).apply {
             text = "تشغيل الصوت"; setTextColor(light); isChecked = prefs.getBoolean("speak", true)
         }
-        for (v in listOf(groqMode, groq, groqAudio, api, model, deep, voice, enabled)) add(box, v, 5)
+        for (v in listOf(wakeKey, groqMode, groq, groqAudio, api, model, deep, voice, enabled)) add(box, v, 5)
         val accessibility = Button(this).apply { text = "تفعيل التحكم باللمس والكتابة" }
         add(box, accessibility)
         accessibility.setOnClickListener { startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
@@ -250,7 +260,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val dialog = AlertDialog.Builder(this).setTitle("DEXTER • SETTINGS")
             .setView(ScrollView(this).apply { addView(box) })
             .setPositiveButton("حفظ") { _, _ ->
-                prefs.edit().putString("provider", if (groqMode.isChecked) "groq" else "openrouter")
+                prefs.edit().putString("picovoice", wakeKey.text.toString().trim())
+                    .putString("provider", if (groqMode.isChecked) "groq" else "openrouter")
                     .putString("groq", groq.text.toString().trim())
                     .putBoolean("groq_audio", groqAudio.isChecked)
                     .putString("open", api.text.toString().trim())
@@ -261,6 +272,23 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 status.text = "Settings saved"
             }.setNegativeButton("إغلاق", null).create()
         dialog.show()
+    }
+    @Deprecated("Android file picker result")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == keywordImportCode && resultCode == RESULT_OK && data?.data != null) {
+            try {
+                val file = File(filesDir, "dexter_android.ppn")
+                contentResolver.openInputStream(data.data!!)?.use { source ->
+                    file.outputStream().use { source.copyTo(it) }
+                } ?: throw Exception("Unable to read wake model")
+                require(file.length() in 100..5000000) { "ملف النموذج غير صالح" }
+                prefs.edit().putString("picovoice_model", file.absolutePath).apply()
+                Toast.makeText(this, "تم استيراد نموذج ديكستر. أوقف خدمة الاستماع وشغّلها", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, e.message, Toast.LENGTH_LONG).show()
+            }
+        }
     }
     private fun browseModels(select: (String) -> Unit) {
         status.text = "Loading free models..."
