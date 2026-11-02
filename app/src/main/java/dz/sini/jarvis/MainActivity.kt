@@ -80,37 +80,47 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             orientation = LinearLayout.VERTICAL; setBackgroundColor(bg)
             setPadding(dp(18), dp(14), dp(18), dp(18))
         }
-        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
         val settings = action("⚙") { showSettings() }
-        header.addView(settings, LinearLayout.LayoutParams(dp(54), dp(54)))
-        val heading = text("D · E · X · T · E · R", 21f)
-            .apply { letterSpacing = .16f; setTypeface(null, Typeface.BOLD) }
-        header.addView(heading, LinearLayout.LayoutParams(0, dp(54), 1f))
-        val reports = action("▤") { showReport() }
-        header.addView(reports, LinearLayout.LayoutParams(dp(54), dp(54)))
+        header.addView(settings, LinearLayout.LayoutParams(dp(48), dp(48)))
+        val heading = text("D E X T E R", 22f, light).apply {
+            letterSpacing = .23f
+            setTypeface(null, Typeface.BOLD)
+        }
+        header.addView(heading, LinearLayout.LayoutParams(0, dp(52), 1f))
+        val reports = action("◷") { showReport() }
+        header.addView(reports, LinearLayout.LayoutParams(dp(48), dp(48)))
         add(frame, header)
-        add(frame, text("●  WAKE     │     ●  LISTENING     │     ●  AGENT READY", 11f, cyan), 20)
+        add(frame, text("✦  NEURAL CORE   ·   VOICE INTERFACE", 10f, cyan), 10)
         orb = OrbView(this)
-        add(frame, orb, 12, 0)
+        add(frame, orb, 18, 0)
         val orbParams = orb.layoutParams as LinearLayout.LayoutParams
-        orbParams.height = 0; orbParams.weight = 1f; orb.layoutParams = orbParams
-        status = text("Ready", 27f)
-        add(frame, status, 2)
-        reply = text("مرحباً سيدي. أعطني المهمة، وسأحللها وأقترح الخطوات والأدوات قبل التنفيذ.", 16f)
-            .apply {
-                gravity = Gravity.CENTER
-                background = panel()
-                setPadding(dp(16), dp(16), dp(16), dp(16))
-                maxLines = 5
-            }
-        add(frame, reply, 18)
-        val mic = action("◉  ALWAYS LISTENING • PAUSE / RESUME") {
+        orbParams.height = 0
+        orbParams.weight = 1f
+        orb.layoutParams = orbParams
+        status = text("DEXTER ONLINE", 21f, cyan).apply {
+            letterSpacing = .11f
+            setTypeface(null, Typeface.BOLD)
+        }
+        add(frame, status, 5)
+        reply = text("قل ديكستر، ثم أخبرني بما تريد", 16f).apply {
+            gravity = Gravity.CENTER
+            background = panel(Color.rgb(4, 14, 25), Color.rgb(19, 77, 110), 26)
+            setPadding(dp(18), dp(20), dp(18), dp(20))
+            maxLines = 5
+        }
+        add(frame, reply, 20)
+        val mic = action("◉   VOICE CORE    ·    تشغيل / إيقاف") {
             if (DexterVoiceService.running) {
                 stopService(Intent(this, DexterVoiceService::class.java))
-                status.text = "⏸ تم إيقاف ديكستر"
+                status.text = "⏸ DEXTER OFFLINE"
             } else startBackgroundVoice()
         }
-        add(frame, mic, 24, dp(60))
+        add(frame, mic, 20, dp(62))
+        add(frame, text("APPNOVA  /  PRIVATE AI SYSTEM", 10f, muted), 14)
         setContentView(frame)
         startBackgroundVoice()
     }
@@ -234,6 +244,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 addCategory(Intent.CATEGORY_OPENABLE)
             }, keywordImportCode)
         }
+        val headingAudio = text("الصوت والتعرّف", 17f, cyan)
+        add(box, headingAudio, 12)
         val groq = settingsField("Groq API Key • GPT-OSS + Orpheus", prefs.getString("groq", "") ?: "", true)
         val groqMode = CheckBox(this).apply {
             text = "استعمال Groq GPT-OSS 20B كمخ رئيسي"
@@ -243,6 +255,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             text = "صوت Orpheus العربي (abdullah)"
             setTextColor(light); isChecked = prefs.getBoolean("groq_audio", true)
         }
+        val headingModels = text("مزوّدو الذكاء", 17f, cyan)
+        add(box, headingModels, 12)
         val api = settingsField("OpenRouter API Key (احتياطي)", prefs.getString("open", "") ?: "", true)
         val model = settingsField("OpenRouter Model", prefs.getString("model", "openrouter/free") ?: "openrouter/free")
         val deep = settingsField("Deepgram API key (optional)", prefs.getString("deep", "") ?: "", true)
@@ -289,13 +303,15 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     }.setNegativeButton("إلغاء", null).show()
             }
         }
+        val headingPrivacy = text("الصلاحيات والأمان", 17f, cyan)
+        add(box, headingPrivacy, 12)
         val accessibility = Button(this).apply { text = "تفعيل التحكم باللمس والكتابة" }
         add(box, accessibility)
         accessibility.setOnClickListener { startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
         val pick = Button(this).apply { text = "تصفّح نماذج OpenRouter المجانية" }
         add(box, pick)
         pick.setOnClickListener { browseModels { selected -> model.setText(selected) } }
-        val dialog = AlertDialog.Builder(this).setTitle("DEXTER • SETTINGS")
+        val dialog = AlertDialog.Builder(this).setTitle("DEXTER  /  SYSTEM SETTINGS")
             .setView(ScrollView(this).apply { addView(box) })
             .setPositiveButton("حفظ") { _, _ ->
                 prefs.edit().putString("picovoice", wakeKey.text.toString().trim())
