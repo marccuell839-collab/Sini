@@ -426,9 +426,21 @@ def play_pcm(pcm: bytes, sample_rate: int, stop_flag: threading.Event | None = N
 
 
 class GroqTtsProvider(TtsProvider):
-    """Groq Arabic Orpheus TTS. Keeps existing Azure and SAPI providers."""
+    """Groq Orpheus Arabic, same neural voice family as LORA Android.
+
+    Never hardcode the user's Groq key. Audio is decoded from the WAV bytes
+    returned by the service, not treated as an MP3 payload.
+    """
     id = "groq"
-    label = "Groq Orpheus (Arabic)"
+    label = "LORA • Groq Orpheus عربي"
+    ARABIC_VOICES = [
+        Voice("noura", "نورا — Noura", "ar-SA", "Female", "groq"),
+        Voice("aisha", "عائشة — Aisha", "ar-SA", "Female", "groq"),
+        Voice("lulwa", "لولوة — Lulwa", "ar-SA", "Female", "groq"),
+        Voice("abdullah", "عبدالله", "ar-SA", "Male", "groq"),
+        Voice("fahad", "فهد", "ar-SA", "Male", "groq"),
+        Voice("sultan", "سلطان", "ar-SA", "Male", "groq"),
+    ]
 
     def __init__(self, key: str | None) -> None:
         self.key = key
@@ -438,29 +450,79 @@ class GroqTtsProvider(TtsProvider):
         return bool(self.key)
 
     def voices(self) -> list[Voice]:
-        return [Voice("abdullah", "Abdullah", "ar-SA", "Male", "groq")]
+        return list(self.ARABIC_VOICES)
 
     def speak(self, text: str, voice: str | None, pitch: str, rate: str) -> None:
         import httpx
+
         if not self.key:
-            raise TtsError("Groq API key required")
+            raise TtsError("أدخل مفتاح Groq من إعدادات لورا")
         self._stop.clear()
-        for i in range(0, len(text), 180):
+        selected = voice if voice in {v.id for v in self.ARABIC_VOICES} else "noura"
+
+        for part in _speech_chunks(text):
             if self._stop.is_set():
-                break
+                return
             try:
                 response = httpx.post(
                     "https://api.groq.com/openai/v1/audio/speech",
                     headers={"Authorization": f"Bearer {self.key}"},
-                    json={"model": "canopylabs/orpheus-arabic-saudi", "input": text[i:i+180],
-                          "voice": voice if voice in ("abdullah", "fahad", "sultan") else "abdullah",
-                          "response_format": "wav"},
-                    timeout=45.0,
+                    json={
+                        "model": "canopylabs/orpheus-arabic-saudi",
+                        "input": part if part[-1] in ".!?؟" else part + ".",
+                        "voice": selected,
+                        "response_format": "wav",
+                    },
+                    timeout=40.0,
                 )
+                if response.status_code == 429:
+                    raise TtsError("انتهت حصة صوت Groq مؤقتاً (HTTP 429)")
                 response.raise_for_status()
-                play_mp3(response.content, self._stop)
+                play_wav(response.content, self._stop)
             except httpx.HTTPError as exc:
-                raise TtsError(f"Groq speech unavailable: {type(exc).__name__}") from exc
+                raise TtsError(f"فشل الاتصال بصوت Groq: {type(exc).__name__}") from exc
 
     def stop(self) -> None:
         self._stop.set()
+
+
+def _speech_chunks(text: str, max_chars: int = 180) -> list[str]:
+    """Prefer sentence/word boundaries; never cut an Arabic word in half."""
+    import re
+    words = re.findall(r"\S+", text.strip())
+    chunks = []
+    current = ""
+    for word in words:
+        if current and len(current) + len(word) + 1 > max_chars:
+            chunks.append(current)
+            current = word
+        else:
+            current = (current + " " + word).strip()
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def play_wav(data: bytes, stop_flag: threading.Event | None = None) -> None:
+    """Read the actual WAV header before playing 16-bit PCM with sounddevice."""
+    import io
+    import wave
+    import numpy as np
+    import sounddevice as sd
+
+    with wave.open(io.BytesIO(data), "rb") as wav:
+        if wav.getsampwidth() != 2:
+            raise TtsError("صيغة WAV غير مدعومة: يلزم PCM 16-bit")
+        channels = wav.getnchannels()
+        sample_rate = wav.getframerate()
+        frames = wav.readframes(wav.getnframes())
+    samples = np.frombuffer(frames, dtype=np.int16).reshape(-1, channels)
+    sd.play(samples, sample_rate)
+    try:
+        while sd.get_stream().active:
+            if stop_flag and stop_flag.is_set():
+                sd.stop()
+                return
+            sd.sleep(45)
+    finally:
+        sd.stop()
