@@ -48,7 +48,7 @@ class Settings:
     backend_url: str = ""
     model: str = "openai/gpt-oss-20b"
     routing_mode: str = "balanced"  # economy | balanced | quality
-    voice: str = "abdullah"
+    voice: str = "noura"
     # "sapi5" for the voices installed in Windows, "azure" for the neural ones.
     tts_provider: str = "groq"
     # "whisper" runs locally, "azure" is faster but needs a key.
@@ -64,7 +64,7 @@ class Settings:
     voice_rate: str = "-8%"
     auto_speak: bool = True
     wake_word_enabled: bool = False
-    push_to_talk_hotkey: str = "Ctrl+Alt+J"
+    push_to_talk_hotkey: str = "Ctrl+Alt+L"
     motion_intensity: str = "full"  # full | reduced | off
     language: str = "ar"
     confirm_sensitive_actions: bool = True
