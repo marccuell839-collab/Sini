@@ -19,7 +19,7 @@ from jarvis_win.core.config import Settings
 from jarvis_win.core.intent import route
 from jarvis_win.core.state import AssistantState, StateMachine
 from jarvis_win.ui.theme import PALETTE, STATE_COLOR, stylesheet
-from jarvis_win.ui.visualizer import VoiceVisualizer
+from jarvis_win.ui.orb import JarvisOrb
 
 
 class MainWindow(QWidget):
@@ -46,8 +46,8 @@ class MainWindow(QWidget):
         self.machine.subscribe(self._on_state_changed)
         self._mic_on = False
 
-        self.setWindowTitle("JARVIS")
-        self.setMinimumSize(560, 520)
+        self.setWindowTitle("LORA")
+        self.setMinimumSize(490, 610)
         self.setStyleSheet(stylesheet())
         if settings.language == "ar":
             self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
@@ -62,11 +62,11 @@ class MainWindow(QWidget):
     def _build(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(26, 22, 26, 22)
-        root.setSpacing(18)
+        root.setSpacing(12)
 
         # --- header -------------------------------------------------------
         header = QHBoxLayout()
-        title = QLabel("J.A.R.V.I.S")
+        title = QLabel("L O R A")
         title.setObjectName("title")
         title.setFont(QFont(title.font().family(), 20, QFont.Weight.DemiBold))
         header.addWidget(title)
@@ -78,12 +78,13 @@ class MainWindow(QWidget):
 
         self.voice_picker = QComboBox()
         self.voice_picker.setToolTip("الصوت")
-        self.voice_picker.setMinimumWidth(170)
+        self.voice_picker.setMinimumWidth(130)
         self.voice_picker.currentIndexChanged.connect(self._on_voice_changed)
         header.addWidget(self.voice_picker)
 
         settings_btn = QPushButton("الإعدادات")
         settings_btn.clicked.connect(self.settings_requested.emit)
+        settings_btn.setToolTip("إعداد Groq والصوت")
         header.addWidget(settings_btn)
         root.addLayout(header)
 
@@ -91,10 +92,10 @@ class MainWindow(QWidget):
         panel = QFrame()
         panel.setObjectName("panel")
         panel_layout = QVBoxLayout(panel)
-        panel_layout.setContentsMargins(20, 18, 20, 18)
+        panel_layout.setContentsMargins(14, 8, 14, 8)
         panel_layout.setSpacing(12)
 
-        self.visualizer = VoiceVisualizer()
+        self.visualizer = JarvisOrb()
         self.visualizer.set_reduced_motion(self.settings.motion_intensity != "full")
         panel_layout.addWidget(self.visualizer)
 
