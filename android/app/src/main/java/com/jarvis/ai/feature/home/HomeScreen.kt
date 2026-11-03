@@ -275,7 +275,7 @@ private fun TopBar(onOpenSettings: () -> Unit) {
         CircleIconButton(Icons.Filled.Settings, "الإعدادات", size = 42.dp, onClick = onOpenSettings)
         Spacer(Modifier.weight(1f))
         Text(
-            text = "J . A . R . V . I . S",
+            text = "L O R A",
             style = MaterialTheme.typography.titleLarge.copy(
                 fontWeight = FontWeight.Light,
                 letterSpacing = 2.sp,
