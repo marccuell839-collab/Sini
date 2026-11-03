@@ -16,7 +16,7 @@ def temp_config(tmp_path, monkeypatch):
 class TestSettings:
     def test_defaults_match_spec(self):
         s = Settings()
-        assert s.voice == "ar-DZ-IsmaelNeural"
+        assert s.voice == "noura"
         assert s.voice_pitch == "-15Hz"
         assert s.voice_rate == "-8%"
         assert s.language == "ar"
@@ -37,7 +37,7 @@ class TestSettings:
         path = Settings.path()
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("{not json", encoding="utf-8")
-        assert Settings.load().voice == "ar-DZ-IsmaelNeural"
+        assert Settings.load().voice == "noura"
 
     def test_unknown_fields_ignored(self, temp_config):
         path = Settings.path()
