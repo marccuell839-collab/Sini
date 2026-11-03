@@ -25,6 +25,7 @@ class VoiceEngine @Inject constructor(
 ) {
 
     private val groq = GroqTtsProvider(http, secureStore, context.cacheDir)
+    private val system = SystemTtsProvider(context)
     private val deepgramBackup = DeepgramTtsProvider(http, secureStore, context.cacheDir)
     private val deepgramStream = DeepgramStreamingTts(http, secureStore)
     private val quotaPrefs = context.getSharedPreferences("lora_voice_quota", Context.MODE_PRIVATE)
@@ -44,7 +45,7 @@ class VoiceEngine @Inject constructor(
 
     @Volatile private var active: TtsProvider? = null
 
-    val providers: List<TtsProvider> get() = listOf(groq, deepgramStream, deepgramBackup)
+    val providers: List<TtsProvider> get() = listOf(groq, system, deepgramStream, deepgramBackup)
     suspend fun availableProviders(): List<TtsProvider> = providers.filter { it.isAvailable() }
     fun setExpressivity(value: Int) = Unit
 
@@ -67,6 +68,12 @@ class VoiceEngine @Inject constructor(
 
         requestFocus()
         try {
+            if (preferredProviderId == system.id) {
+                active = system
+                if (!system.isAvailable()) throw TtsException("لا يوجد محرك نطق عربي محلي مثبت. ثبّت صوتا عربيا في إعدادات الهاتف.")
+                system.speak(text, voice, pitch, rate, onAmplitude)
+                return SpokenBy(system.id, false)
+            }
             if (isGroqCoolingDown()) {
                 if (!deepgramBackup.isAvailable()) {
                     throw TtsException("انتهت حصة صوت Groq. أضف مفتاح Deepgram.")
