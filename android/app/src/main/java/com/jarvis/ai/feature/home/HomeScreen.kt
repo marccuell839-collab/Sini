@@ -38,7 +38,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
 import android.Manifest
 import android.content.pm.PackageManager
@@ -85,16 +84,12 @@ fun HomeScreen(
     val settings by viewModel.settings.collectAsState()
     var input by rememberSaveable { mutableStateOf("") }
     var keyboardOpen by rememberSaveable { mutableStateOf(false) }
-    var pendingCoachPermission by rememberSaveable { mutableStateOf(false) }
 
     val context = LocalContext.current
     val micPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        if (granted) {
-            if (pendingCoachPermission) viewModel.toggleConversationCoach() else viewModel.toggleMic(true)
-        } else viewModel.onMicPermissionDenied()
-        pendingCoachPermission = false
+        if (granted) viewModel.toggleMic(true) else viewModel.onMicPermissionDenied()
     }
 
     val accent by animateColorAsState(
@@ -212,24 +207,6 @@ fun HomeScreen(
         }
 
         Spacer(Modifier.weight(1f))
-
-        Button(onClick = {
-            if (ui.conversationCoach || ContextCompat.checkSelfPermission(
-                    context, Manifest.permission.RECORD_AUDIO
-                ) == PackageManager.PERMISSION_GRANTED
-            ) viewModel.toggleConversationCoach()
-            else {
-                pendingCoachPermission = true
-                micPermission.launch(Manifest.permission.RECORD_AUDIO)
-            }
-        }, modifier = Modifier.fillMaxWidth()) {
-            Text(if (ui.conversationCoach) "إيقاف مساعد المحادثة الفرنسية" else "مساعد المحادثة الفرنسية")
-        }
-        Text(
-            "شغّل هذا الوضع بموافقة الشخص الآخر. لورا تستمع أثناء تفعيله وتقترح ترجمة ورداً فرنسياً، ويمكن إيقافه فوراً.",
-            color = TextDim,
-            style = MaterialTheme.typography.bodySmall,
-        )
 
         ControlRow(
             micOn = ui.micOn,
