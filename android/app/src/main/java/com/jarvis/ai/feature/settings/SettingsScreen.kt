@@ -329,10 +329,40 @@ fun SettingsScreen(
                     label = { Text("Groq عائشة (إنترنت)") },
                 )
                 FilterChip(
+                    selected = settings.voiceProvider == "google",
+                    onClick = { viewModel.setVoiceProvider("google") },
+                    label = { Text("Google Gemini — صوت أنثوي سحابي") },
+                )
+                FilterChip(
                     selected = settings.voiceProvider == "system",
                     onClick = { viewModel.setVoiceProvider("system") },
                     label = { Text("محلي سريع — محرك أندرويد (بدون API)") },
                 )
+            }
+            if (settings.voiceProvider == "google") {
+                Text(
+                    "Gemini TTS: اختر Leda أو Aoede أو Kore. اللهجة الجزائرية تُطلب من النموذج لكنها غير مضمونة. يحتاج إنترنت وحصة Google API.",
+                    color = TextDim, style = MaterialTheme.typography.bodySmall,
+                )
+                var googleKeyInput by rememberSaveable { mutableStateOf("") }
+                if (ui.hasGoogleTtsKey) Text("مفتاح Google محفوظ محلياً ✓", color = SuccessGreen)
+                OutlinedTextField(
+                    value = googleKeyInput,
+                    onValueChange = { googleKeyInput = it },
+                    label = { Text("Google AI Studio API key") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        viewModel.saveGoogleTtsKey(googleKeyInput)
+                        googleKeyInput = ""
+                    }, enabled = googleKeyInput.isNotBlank()) { Text("حفظ المفتاح") }
+                    if (ui.hasGoogleTtsKey) {
+                        TextButton(onClick = viewModel::clearGoogleTtsKey) { Text("حذف", color = ErrorRed) }
+                    }
+                }
             }
             if (settings.voiceProvider == "system") {
                 Text(
