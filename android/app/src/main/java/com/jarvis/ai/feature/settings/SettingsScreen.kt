@@ -290,7 +290,7 @@ fun SettingsScreen(
 
         // ------------------------------------------------------- voice
         Section(title = stringRes(R.string.settings_voice)) {
-            Text("النطق: Groq Orpheus فقط — صوت لورا عائشة. لا يوجد تبديل تلقائي لمحركات أخرى.", color = TextDim, style = MaterialTheme.typography.bodyMedium)
+            Text("النطق الأساسي: Groq Orpheus (عائشة). عند نفاد الحصة يتحول تلقائياً إلى Deepgram Thalia الإنجليزية، ثم يعود إلى عائشة بعد انتهاء مهلة Groq. يلزم مفتاح Deepgram محفوظ في قسم التعرف على الكلام.", color = TextDim, style = MaterialTheme.typography.bodyMedium)
             if (ui.voices.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (option in ui.voices.take(12)) {
