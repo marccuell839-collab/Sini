@@ -67,7 +67,7 @@ class GroqTtsProvider(
         }
     }
     private fun parseResetSeconds(value: String?): Long? {
-        val match = Regex("""(?:(\\d+)h)?(?:(\\d+)m)?([0-9]+(?:\\.[0-9]+)?)s""")
+        val match = Regex("""(?:([0-9]+)h)?(?:([0-9]+)m)?([0-9]+(?:[.][0-9]+)?)s""")
             .matchEntire(value.orEmpty()) ?: return null
         val hours = match.groupValues[1].toLongOrNull() ?: 0L
         val minutes = match.groupValues[2].toLongOrNull() ?: 0L
