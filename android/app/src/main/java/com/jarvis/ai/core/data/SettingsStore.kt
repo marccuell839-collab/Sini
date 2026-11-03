@@ -33,6 +33,7 @@ data class JarvisSettings(
     val voicePitch: String = "-15Hz",
     val voiceRate: String = "-8%",
     val autoSpeak: Boolean = true,
+    val automaticFrenchHelp: Boolean = false,
     val wakeWordEnabled: Boolean = false,
     val reducedMotion: Boolean = false,
     val confirmSensitiveActions: Boolean = true,
@@ -62,6 +63,7 @@ class SettingsStore @Inject constructor(private val context: Context) {
             voicePitch = p[Keys.PITCH] ?: JarvisSettings().voicePitch,
             voiceRate = p[Keys.RATE] ?: JarvisSettings().voiceRate,
             autoSpeak = p[Keys.AUTO_SPEAK] ?: JarvisSettings().autoSpeak,
+            automaticFrenchHelp = p[Keys.AUTOMATIC_FRENCH] ?: JarvisSettings().automaticFrenchHelp,
             wakeWordEnabled = p[Keys.WAKE_WORD] ?: JarvisSettings().wakeWordEnabled,
             reducedMotion = p[Keys.REDUCED_MOTION] ?: JarvisSettings().reducedMotion,
             confirmSensitiveActions = p[Keys.CONFIRM] ?: JarvisSettings().confirmSensitiveActions,
@@ -80,6 +82,7 @@ class SettingsStore @Inject constructor(private val context: Context) {
     suspend fun setPitch(value: String) = edit { it[Keys.PITCH] = value }
     suspend fun setRate(value: String) = edit { it[Keys.RATE] = value }
     suspend fun setAutoSpeak(value: Boolean) = edit { it[Keys.AUTO_SPEAK] = value }
+    suspend fun setAutomaticFrenchHelp(value: Boolean) = edit { it[Keys.AUTOMATIC_FRENCH] = value }
     suspend fun setWakeWord(value: Boolean) = edit { it[Keys.WAKE_WORD] = value }
     suspend fun setReducedMotion(value: Boolean) = edit { it[Keys.REDUCED_MOTION] = value }
     suspend fun setConfirmSensitive(value: Boolean) = edit { it[Keys.CONFIRM] = value }
@@ -100,6 +103,7 @@ class SettingsStore @Inject constructor(private val context: Context) {
         val PITCH = stringPreferencesKey("voice_pitch")
         val RATE = stringPreferencesKey("voice_rate")
         val AUTO_SPEAK = booleanPreferencesKey("auto_speak")
+        val AUTOMATIC_FRENCH = booleanPreferencesKey("automatic_french_help")
         val WAKE_WORD = booleanPreferencesKey("wake_word")
         val REDUCED_MOTION = booleanPreferencesKey("reduced_motion")
         val CONFIRM = booleanPreferencesKey("confirm_sensitive")
