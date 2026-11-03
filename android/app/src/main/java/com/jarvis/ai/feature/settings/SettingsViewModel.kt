@@ -267,7 +267,12 @@ class SettingsViewModel @Inject constructor(
     // -------------------------------------------------------- plain setters
 
     fun setModel(value: String) = viewModelScope.launch { settingsStore.setModel(value) }
-    fun setVoiceProvider(value: String) = viewModelScope.launch { settingsStore.setVoiceProvider(value) }
+    fun setVoiceProvider(value: String) = viewModelScope.launch {
+        if (value !in setOf("groq", "system")) return@launch
+        settingsStore.setVoiceProvider(value)
+        settingsStore.setVoice(if (value == "groq") "aisha" else "")
+        loadVoices()
+    }
     fun setVoice(value: String) = viewModelScope.launch { settingsStore.setVoice(value) }
     fun setPitch(value: String) = viewModelScope.launch { settingsStore.setPitch(value) }
     fun setRate(value: String) = viewModelScope.launch { settingsStore.setRate(value) }
