@@ -41,28 +41,41 @@ class JarvisAccessibilityService : AccessibilityService() {
     private val proactiveScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var lastReactionAt = 0L
     private var lastScanAt = 0L
+    private var lastMentionSignature = ""
     private var reacting = false
 
-    private fun maybeReactToScreen(packageName: String, type: Int) {
+    private fun maybeReactToScreen(event: AccessibilityEvent, packageName: String) {
         if (packageName != "com.openai.chatgpt") return
-        if (type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
-            type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
+            event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         if (!getSharedPreferences("lora_proactive", MODE_PRIVATE).getBoolean("enabled", false)) return
+
         val now = android.os.SystemClock.elapsedRealtime()
-        if (reacting || now - lastScanAt < 15000L || now - lastReactionAt < 600000L) return
+        if (reacting || now - lastScanAt < 1200L) return
         lastScanAt = now
-        val labels = runCatching { describeScreen(60).map { it.text } }.getOrDefault(emptyList())
-        val found = labels.any { label ->
+
+        // Prefer the new text carried by the accessibility event, then the
+        // current visible screen. Do not inspect notifications or other apps.
+        val updatedText = event.text.mapNotNull { it?.toString() }
+            .filter { it.isNotBlank() }
+        val visibleLabels = runCatching { describeScreen(180).map { it.text } }
+            .getOrDefault(emptyList())
+        val mentioned = (updatedText + visibleLabels).filter { label ->
             val lower = label.lowercase()
-            lower.contains("لورا") || lower.contains("lora") ||
-                lower.contains("جارفيس") || lower.contains("jarvis")
+            lower.contains("لورا") || lower.contains("نورا") ||
+                lower.contains("lora") || lower.contains("laura") ||
+                lower.contains("jarvis") || lower.contains("جارفيس")
         }
-        if (!found) return
+        if (mentioned.isEmpty()) return
+        val signature = mentioned.takeLast(3).joinToString("|").take(450)
+        // Old messages should not repeatedly trigger a new comment.
+        if (signature == lastMentionSignature) return
+        lastMentionSignature = signature
+        if (now - lastReactionAt < 600000L) return
         lastReactionAt = now
         reacting = true
         proactiveScope.launch {
             try {
-                // No screen content is transmitted to a language model.
                 val speech = if (voiceEngine.wantsEnglishReply())
                     "Hey, are you talking about me?"
                 else "آه، راكم تهدروا عليا؟ أنا هنا يا سيدي!"
@@ -74,7 +87,6 @@ class JarvisAccessibilityService : AccessibilityService() {
             }
         }
     }
-
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -98,7 +110,7 @@ class JarvisAccessibilityService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             foregroundPackage = packageName
         }
-        maybeReactToScreen(packageName, event.eventType)
+        maybeReactToScreen(event, packageName)
     }
 
     override fun onInterrupt() {
