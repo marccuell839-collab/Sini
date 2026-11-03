@@ -35,6 +35,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -54,6 +55,9 @@ fun SettingsScreen(
     onBack: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
+    val proactivePrefs = remember { context.getSharedPreferences("lora_proactive", android.content.Context.MODE_PRIVATE) }
+    var proactiveEnabled by remember { mutableStateOf(proactivePrefs.getBoolean("enabled", false)) }
     val ui by viewModel.ui.collectAsState()
     val settings by viewModel.settings.collectAsState()
 
@@ -286,6 +290,22 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
+        }
+
+        Section(title = "لورا الاستباقية") {
+            ToggleRow(
+                label = "تفاعل لورا عندما يُذكر اسمها في ChatGPT",
+                checked = proactiveEnabled,
+                onChange = {
+                    proactiveEnabled = it
+                    proactivePrefs.edit().putBoolean("enabled", it).apply()
+                },
+            )
+            Text(
+                "تحتاج تفعيل خدمة إمكانية الوصول من إعدادات الهاتف. تفحص لورا النص الظاهر محلياً داخل ChatGPT فقط، ولا ترسل محتوى الشاشة لأي خادم. تتفاعل مرة كل عشر دقائق على الأكثر. يمكنك تعطيلها في أي لحظة.",
+                color = TextDim,
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
 
         // ------------------------------------------------------- voice
