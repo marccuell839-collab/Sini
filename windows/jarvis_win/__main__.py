@@ -1,22 +1,22 @@
-"""Entry point for the JARVIS desktop app."""
+"""Entry point for the LORA desktop app."""
 
 from __future__ import annotations
 
 import logging
 import sys
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
-from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon, QDialog, QFormLayout, QLineEdit, QComboBox, QDialogButtonBox, QLabel, QVBoxLayout
 
-from jarvis_win.core.config import Settings, secrets_available
+from jarvis_win.core.config import Settings, secrets_available, get_openrouter_key, set_openrouter_key
 from jarvis_win.core.controller import Controller
 from jarvis_win.core.files import DeletionPlan
 from jarvis_win.core.state import AssistantState
 from jarvis_win.ui.main_window import MainWindow
 from jarvis_win.ui.theme import PALETTE
 
-log = logging.getLogger("jarvis")
+log = logging.getLogger("lora")
 
 
 def _tray_icon() -> QIcon:
@@ -59,11 +59,56 @@ def _confirm_deletion(window: MainWindow, summary: str, plan: DeletionPlan) -> b
     return box.clickedButton() is delete_button
 
 
+def _show_settings(window: MainWindow, settings: Settings, controller: Controller) -> None:
+    """Configure Groq securely through Windows Credential Manager."""
+    dialog = QDialog(window)
+    dialog.setWindowTitle("إعدادات LORA")
+    dialog.setMinimumWidth(440)
+    layout = QVBoxLayout(dialog)
+    layout.addWidget(QLabel("Groq للذكاء وصوت لورا. المفتاح محفوظ في Windows Credential Manager."))
+    form = QFormLayout()
+    key_input = QLineEdit()
+    key_input.setEchoMode(QLineEdit.EchoMode.Password)
+    key_input.setPlaceholderText("أدخل مفتاح Groq الجديد (اتركه فارغاً للإبقاء على الحالي)")
+    form.addRow("مفتاح Groq", key_input)
+    current_label = QLabel("مفتاح محفوظ ✓" if get_openrouter_key() else "لا يوجد مفتاح")
+    form.addRow("الحالة", current_label)
+    model_input = QLineEdit(settings.model)
+    form.addRow("نموذج الذكاء", model_input)
+    voice = QComboBox()
+    for ident, label in [
+        ("noura", "Noura — نورا"), ("aisha", "Aisha — عائشة"),
+        ("lulwa", "Lulwa — لولوة"), ("abdullah", "Abdullah"),
+        ("fahad", "Fahad"), ("sultan", "Sultan")
+    ]:
+        voice.addItem(label, ident)
+    voice.setCurrentIndex(max(0, voice.findData(settings.voice)))
+    form.addRow("صوت Groq", voice)
+    layout.addLayout(form)
+    buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save |
+                               QDialogButtonBox.StandardButton.Cancel)
+    buttons.accepted.connect(dialog.accept)
+    buttons.rejected.connect(dialog.reject)
+    layout.addWidget(buttons)
+    if dialog.exec() != QDialog.DialogCode.Accepted:
+        return
+    if key_input.text().strip() and not set_openrouter_key(key_input.text().strip()):
+        QMessageBox.warning(window, "LORA", "تعذر حفظ المفتاح بشكل آمن في Windows Credential Manager")
+        return
+    settings.voice = voice.currentData()
+    settings.model = model_input.text().strip() or "openai/gpt-oss-20b"
+    settings.tts_provider = "groq"
+    settings.save()
+    controller._tts_providers[0].key = get_openrouter_key()
+    window.populate_voices(controller.available_voices())
+    window.show_text("تم حفظ إعدادات LORA. جرّب الآن سؤالاً أو تحدّث معها بصوتك.")
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
     app = QApplication(argv if argv is not None else sys.argv)
-    app.setApplicationName("JARVIS")
+    app.setApplicationName("LORA")
     app.setQuitOnLastWindowClosed(False)  # closing the window keeps the tray
 
     settings = Settings.load()
@@ -88,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:
     window.utterance_submitted.connect(controller.handle_utterance)
     window.mic_toggled.connect(controller.set_listening)
     window.cancel_requested.connect(controller.cancel)
+    window.settings_requested.connect(lambda: _show_settings(window, settings, controller))
 
     if not secrets_available():
         window.show_error(
@@ -106,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- tray --------------------------------------------------------------
     tray = QSystemTrayIcon(_tray_icon(), app)
-    tray.setToolTip("JARVIS")
+    tray.setToolTip("LORA")
     menu = QMenu()
 
     show_action = QAction("إظهار النافذة", menu)
@@ -143,6 +189,8 @@ def main(argv: list[str] | None = None) -> int:
     app.aboutToQuit.connect(controller.shutdown)
     window.set_state(AssistantState.IDLE)
     window.show()
+    if not get_openrouter_key():
+        QTimer.singleShot(400, lambda: _show_settings(window, settings, controller))
     return app.exec()
 
 
