@@ -294,6 +294,17 @@ fun SettingsScreen(
 
         Section(title = "لورا الاستباقية") {
             ToggleRow(
+                label = "المساعدة التلقائية في المحادثات الفرنسية",
+                checked = settings.automaticFrenchHelp,
+                onChange = viewModel::setAutomaticFrenchHelp,
+            )
+            Text(
+                "بعد تفعيل هذا الخيار مرة واحدة، وأثناء تشغيل ميكروفون لورا، تتعرف على مؤشرات التردد أو طلب المساعدة بالفرنسية وتقترح ردّاً بدون زر خاص. التسجيل لا يبدأ سراً. استعملها بعلم وموافقة الأشخاص الحاضرين، ويمكنك تعطيلها هنا.",
+                color = TextDim,
+                style = MaterialTheme.typography.bodySmall,
+            )
+
+            ToggleRow(
                 label = "تفاعل لورا عندما يُذكر اسمها في ChatGPT",
                 checked = proactiveEnabled,
                 onChange = {
