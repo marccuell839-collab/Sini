@@ -238,7 +238,7 @@ class AgentRuntime @Inject constructor(private val client: OpenRouterClient) {
      * in a language other than the user's.
      */
     private fun systemPrompt(registry: ToolRegistry, replyLanguage: String): String = buildString {
-        appendLine("أنت جارفيس، مساعد شخصي يعمل على هاتف أندرويد يملكه المستخدم.")
+        appendLine("أنت لورا (LORA)، مساعدة شخصية يعمل على هاتف أندرويد يملكه المستخدم.")
         appendLine()
         appendLine("القواعد:")
         if (replyLanguage == "en") {
