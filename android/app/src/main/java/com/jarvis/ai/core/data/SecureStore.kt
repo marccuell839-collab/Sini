@@ -67,6 +67,10 @@ class SecureStore @Inject constructor(context: Context) {
         get() = prefs?.getString(KEY_AZURE_KEY, null)
         set(value) = put(KEY_AZURE_KEY, value)
 
+    var googleTtsKey: String?
+        get() = prefs?.getString(KEY_GOOGLE_TTS, null)
+        set(value) = put(KEY_GOOGLE_TTS, value)
+
     var azureRegion: String?
         get() = prefs?.getString(KEY_AZURE_REGION, null)
         set(value) = put(KEY_AZURE_REGION, value)
@@ -90,6 +94,7 @@ class SecureStore @Inject constructor(context: Context) {
         const val KEY_DEEPGRAM = "deepgram_api_key"
         const val KEY_AZURE_KEY = "azure_speech_key"
         const val KEY_AZURE_REGION = "azure_speech_region"
+        const val KEY_GOOGLE_TTS = "google_tts_api_key"
     }
 }
 
@@ -97,5 +102,7 @@ class SecureStore @Inject constructor(context: Context) {
 fun redact(text: String): String = text
     .replace(Regex("jv1\\.[a-z2-9]{12}\\.[a-z2-9]{10}\\.[A-Za-z0-9_-]+"), "jv1.***")
     .replace(Regex("sk-or-[A-Za-z0-9_-]{6,}"), "sk-or-***")
+    .replace(Regex("AQ\\.[A-Za-z0-9_-]{12,}"), "AQ.***")
+    .replace(Regex("AIza[A-Za-z0-9_-]{20,}"), "AIza***")
     // Deepgram and Azure keys are bare hex, so they are matched by shape.
     .replace(Regex("\\b[0-9a-f]{32,40}\\b"), "***")
