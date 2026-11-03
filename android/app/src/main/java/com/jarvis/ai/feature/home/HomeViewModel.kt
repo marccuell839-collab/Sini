@@ -98,7 +98,7 @@ class HomeViewModel @Inject constructor(
             "how do i say", "how to say in french",
         )
         if (triggers.any { words.contains(it) }) return true
-        val hesitation = Regex("""(?iu)\\b(euh|heu|hum)[,.! ?]+(euh|heu|hum)\\b""")
+        val hesitation = Regex("""(?iu)\b(euh|heu|hum)[,.! ?]+(euh|heu|hum)\b""")
         return hesitation.containsMatchIn(words)
     }
 
@@ -407,7 +407,6 @@ class HomeViewModel @Inject constructor(
 
             is SttEvent.Final -> {
                 _ui.value = _ui.value.copy(transcript = event.text, activity = null)
-                go(AssistantState.UNDERSTANDING)
                 if (settings.value.automaticFrenchHelp && _ui.value.micOn) {
                     val now = android.os.SystemClock.elapsedRealtime()
                     if (frenchHelpNeeded(event.text) && now - lastCoachAt >= 20_000L) {
@@ -422,7 +421,10 @@ class HomeViewModel @Inject constructor(
                         submit(event.text)
                     } else {
                         // Ambient speech from other people must not turn into arbitrary phone commands.
-                        go(AssistantState.LISTENING)
+                        if (_ui.value.state != AssistantState.LISTENING) {
+                            go(AssistantState.IDLE)
+                            go(AssistantState.LISTENING)
+                        }
                     }
                 } else {
                     submit(event.text)
