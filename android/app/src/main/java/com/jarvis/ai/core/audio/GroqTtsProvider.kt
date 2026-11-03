@@ -47,6 +47,14 @@ class GroqTtsProvider(
                     .header("Authorization", "Bearer $key")
                     .post(body.toString().toRequestBody("application/json".toMediaType())).build()
                 http.newCall(request).execute().use { response ->
+                    if (response.code == 429) {
+                        // Groq Retry-After is seconds; the other reset header covers daily quotas.
+                        val retrySeconds = response.header("retry-after")?.toDoubleOrNull()
+                            ?.toLong()?.coerceIn(1, 172800)
+                            ?: parseResetSeconds(response.header("x-ratelimit-reset-requests"))
+                            ?: 60L
+                        throw GroqSpeechRateLimit(retrySeconds)
+                    }
                     if (!response.isSuccessful) {
                         val detail = response.body?.string().orEmpty().take(300)
                         throw TtsException("فشل صوت عائشة (Groq HTTP ${response.code}): $detail")
@@ -58,6 +66,15 @@ class GroqTtsProvider(
             try { playWav(file); delay(180) } finally { file.delete() }
         }
     }
+    private fun parseResetSeconds(value: String?): Long? {
+        val match = Regex("""(?:(\\d+)h)?(?:(\\d+)m)?([0-9]+(?:\\.[0-9]+)?)s""")
+            .matchEntire(value.orEmpty()) ?: return null
+        val hours = match.groupValues[1].toLongOrNull() ?: 0L
+        val minutes = match.groupValues[2].toLongOrNull() ?: 0L
+        val seconds = match.groupValues[3].toDoubleOrNull()?.toLong() ?: 0L
+        return (hours * 3600 + minutes * 60 + seconds).coerceIn(1, 172800)
+    }
+
     /** Split on phrase or word boundaries to prevent cutting Arabic syllables. */
     private fun splitForSpeech(text: String): List<String> {
         val normalized = text.trim().replace(Regex("\\s+"), " ")
@@ -176,3 +193,7 @@ class GroqTtsProvider(
     }
     override fun release() = stop()
 }
+
+/** Only rate limits should trigger Deepgram voice fallback. */
+class GroqSpeechRateLimit(val retryAfterSeconds: Long) :
+    TtsException("بلغ صوت Groq حد الطلبات؛ جرّب بعد $retryAfterSeconds ثانية")
