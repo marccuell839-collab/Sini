@@ -33,7 +33,7 @@ def window(qapp):
 
 
 def test_window_builds(window):
-    assert window.windowTitle() == "JARVIS"
+    assert window.windowTitle() == "LORA"
     assert window.machine.state is AssistantState.IDLE
 
 
@@ -96,4 +96,4 @@ def test_open_question_goes_to_thinking(window):
 def test_visualizer_accepts_amplitude(window):
     window.push_amplitude(0.7)
     window.visualizer._tick()
-    assert max(window.visualizer._levels) > 0
+    assert window.visualizer._energy > 0
