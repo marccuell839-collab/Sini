@@ -38,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
 import android.Manifest
 import android.content.pm.PackageManager
@@ -207,6 +208,21 @@ fun HomeScreen(
         }
 
         Spacer(Modifier.weight(1f))
+
+        Button(onClick = {
+            if (ui.conversationCoach || ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED
+            ) viewModel.toggleConversationCoach()
+            else micPermission.launch(Manifest.permission.RECORD_AUDIO)
+        }, modifier = Modifier.fillMaxWidth()) {
+            Text(if (ui.conversationCoach) "إيقاف مساعد المحادثة الفرنسية" else "مساعد المحادثة الفرنسية")
+        }
+        Text(
+            "شغّل هذا الوضع بموافقة الشخص الآخر. لورا تستمع أثناء تفعيله وتقترح ترجمة ورداً فرنسياً، ويمكن إيقافه فوراً.",
+            color = TextDim,
+            style = MaterialTheme.typography.bodySmall,
+        )
 
         ControlRow(
             micOn = ui.micOn,
