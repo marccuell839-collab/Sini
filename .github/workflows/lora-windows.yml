@@ -1,0 +1,47 @@
+name: Build LORA Windows EXE
+on:
+  push:
+    branches: [main]
+    paths:
+      - "windows/**"
+      - ".github/workflows/lora-windows.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pyinstaller
+      - name: Unit and UI smoke tests
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONPATH: .
+        run: python -m pytest tests -q
+      - name: Package Windows application
+        shell: pwsh
+        run: pyinstaller --noconfirm jarvis.spec
+      - name: Verify Windows EXE
+        shell: pwsh
+        run: |
+          if (!(Test-Path "dist/LORA/LORA.exe")) { throw "LORA.exe missing" }
+      - name: Upload LORA Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: LORA-Windows-EXE
+          path: windows/dist/LORA/
+          if-no-files-found: error
