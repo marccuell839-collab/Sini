@@ -85,13 +85,27 @@ class HomeViewModel @Inject constructor(
     private var confirmation: CompletableDeferred<Boolean>? = null
     private var lastCoachAt = 0L
 
-    fun toggleConversationCoach() {
-        val enabled = !_ui.value.conversationCoach
-        _ui.value = _ui.value.copy(conversationCoach = enabled,
-            activity = if (enabled) "مساعد المحادثة الفرنسية مفعّل — أخبر الطرف الآخر أنك تستعمله" else null)
-        if (enabled && !_ui.value.micOn) toggleMic(true)
-        else if (enabled && _ui.value.micOn) startListening()
-        else if (!enabled && _ui.value.micOn) toggleMic(false)
+    /** Detect obvious requests for help or hesitation locally; do not infer feelings from arbitrary speech. */
+    private fun frenchHelpNeeded(utterance: String): Boolean {
+        val words = utterance.lowercase().trim()
+        val triggers = listOf(
+            "comment dire", "je ne sais pas comment", "je sais pas comment",
+            "je cherche mes mots", "je ne trouve pas les mots",
+            "comment on dit", "euh euh", "euh... euh",
+            "كيفاش نقول", "كيف نقول", "ما نعرفش نهدر",
+            "مفهمتش بالفرنسية", "مفهمتش بالفرونسي", "ساعديني بالفرنسية",
+            "عاونيني بالفرنسية", "ترجملي للفرنسية", "ترجملي للفرونسي",
+            "how do i say", "how to say in french",
+        )
+        if (triggers.any { words.contains(it) }) return true
+        val hesitation = Regex("""(?iu)\\b(euh|heu|hum)[,.! ?]+(euh|heu|hum)\\b""")
+        return hesitation.containsMatchIn(words)
+    }
+
+    private fun addressesLora(utterance: String): Boolean {
+        val lowered = utterance.lowercase()
+        return listOf("لورا", "نورا", "lora", "laura", "jarvis", "جارفيس")
+            .any { lowered.contains(it) }
     }
 
     fun refreshKeyState() {
@@ -357,7 +371,7 @@ class HomeViewModel @Inject constructor(
 
         sttJob?.cancel()
         sttJob = viewModelScope.launch {
-            stt.listen(if (_ui.value.conversationCoach) "multi" else settings.value.sttLanguage).collect(::onSttEvent)
+            stt.listen(if (settings.value.automaticFrenchHelp) "multi" else settings.value.sttLanguage).collect(::onSttEvent)
         }
     }
 
@@ -394,16 +408,23 @@ class HomeViewModel @Inject constructor(
             is SttEvent.Final -> {
                 _ui.value = _ui.value.copy(transcript = event.text, activity = null)
                 go(AssistantState.UNDERSTANDING)
-                if (_ui.value.conversationCoach) {
+                if (settings.value.automaticFrenchHelp && _ui.value.micOn) {
                     val now = android.os.SystemClock.elapsedRealtime()
-                    if (now - lastCoachAt >= 12000L && !event.text.isBlank()) {
+                    if (frenchHelpNeeded(event.text) && now - lastCoachAt >= 20_000L) {
                         lastCoachAt = now
-                        submit("أنت مساعد محادثة فرنسية مباشرة. هذا كلام سمعته أثناء محادثة بموافقة المشاركين: " +
-                            event.text + ". أعطني ترجمة عربية قصيرة، ثم جملة فرنسية طبيعية ومختصرة أقدر أقولها ردّاً عليه. " +
-                            "لا تنفذ أي أدوات أو إجراءات، ولا تتحدث مع الطرف الآخر مباشرة.")
+                        submit(
+                            "هذا كلامي في محادثة فرنسية بعلم الحاضرين: " + event.text +
+                            ". ساعدني باختصار: اعطِ عبارة فرنسية طبيعية واحدة مناسبة للسياق، " +
+                            "ومعناها بالعربية. لا تتفاعل مع أي شخص غيري ولا تستخدم أدوات الهاتف."
+                        )
+                    } else if (addressesLora(event.text)) {
+                        // Direct requests to LORA still work even when auto-coaching is enabled.
+                        submit(event.text)
+                    } else {
+                        // Ambient speech from other people must not turn into arbitrary phone commands.
+                        go(AssistantState.LISTENING)
                     }
                 } else {
-                    // Hands-free: one spoken sentence is one instruction.
                     submit(event.text)
                 }
             }
