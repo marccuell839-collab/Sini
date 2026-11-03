@@ -185,7 +185,7 @@ class HomeViewModel @Inject constructor(
             stt.pauseUplink()
             SpeechPipeline(
                 scope = viewModelScope,
-                bufferUntilFinish = true,
+                bufferUntilFinish = current.voiceProvider != "system",
                 speak = { chunk ->
                     go(AssistantState.SPEAKING)
                     voice.speak(
@@ -208,7 +208,7 @@ class HomeViewModel @Inject constructor(
             model = current.model,
             instruction = utterance,
             registry = registry,
-            replyLanguage = if (voice.wantsEnglishReply()) "en" else "ar",
+            replyLanguage = if (current.voiceProvider == "groq" && voice.wantsEnglishReply()) "en" else "ar",
             history = history.toList(),
             limits = AgentRuntime.Limits(
                 maxToolCalls = current.maxToolCalls,
