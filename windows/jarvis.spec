@@ -1,6 +1,6 @@
-# PyInstaller build spec for the JARVIS desktop app.
+# PyInstaller build spec for the LORA desktop app.
 #   pyinstaller jarvis.spec
-# Produces dist/JARVIS/JARVIS.exe (one folder; starts faster than onefile).
+# Produces dist/LORA/LORA.exe (one folder; starts faster than onefile).
 
 block_cipher = None
 
@@ -48,7 +48,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="JARVIS",
+    name="LORA",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -63,5 +63,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=False,
-    name="JARVIS",
+    name="LORA",
 )
