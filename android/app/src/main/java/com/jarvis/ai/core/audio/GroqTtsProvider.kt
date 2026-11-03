@@ -196,4 +196,4 @@ class GroqTtsProvider(
 
 /** Only rate limits should trigger Deepgram voice fallback. */
 class GroqSpeechRateLimit(val retryAfterSeconds: Long) :
-    TtsException("بلغ صوت Groq حد الطلبات؛ جرّب بعد $retryAfterSeconds ثانية")
+    RuntimeException("بلغ صوت Groq حد الطلبات؛ جرّب بعد $retryAfterSeconds ثانية")
