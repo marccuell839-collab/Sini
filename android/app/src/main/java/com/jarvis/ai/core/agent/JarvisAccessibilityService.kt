@@ -63,8 +63,7 @@ class JarvisAccessibilityService : AccessibilityService() {
         val mentioned = (updatedText + visibleLabels).filter { label ->
             val lower = label.lowercase()
             lower.contains("لورا") || lower.contains("نورا") ||
-                lower.contains("lora") || lower.contains("laura") ||
-                lower.contains("jarvis") || lower.contains("جارفيس")
+                lower.contains("lora") || lower.contains("laura")
         }
         if (mentioned.isEmpty()) return
         val signature = mentioned.takeLast(3).joinToString("|").take(450)
