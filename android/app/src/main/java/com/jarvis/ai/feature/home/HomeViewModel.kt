@@ -90,6 +90,8 @@ class HomeViewModel @Inject constructor(
         _ui.value = _ui.value.copy(conversationCoach = enabled,
             activity = if (enabled) "مساعد المحادثة الفرنسية مفعّل — أخبر الطرف الآخر أنك تستعمله" else null)
         if (enabled && !_ui.value.micOn) toggleMic(true)
+        else if (enabled && _ui.value.micOn) startListening()
+        else if (!enabled && _ui.value.micOn) toggleMic(false)
     }
 
     fun refreshKeyState() {
@@ -355,7 +357,7 @@ class HomeViewModel @Inject constructor(
 
         sttJob?.cancel()
         sttJob = viewModelScope.launch {
-            stt.listen(settings.value.sttLanguage).collect(::onSttEvent)
+            stt.listen(if (_ui.value.conversationCoach) "multi" else settings.value.sttLanguage).collect(::onSttEvent)
         }
     }
 
