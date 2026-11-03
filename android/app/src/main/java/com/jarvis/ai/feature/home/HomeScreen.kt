@@ -85,12 +85,16 @@ fun HomeScreen(
     val settings by viewModel.settings.collectAsState()
     var input by rememberSaveable { mutableStateOf("") }
     var keyboardOpen by rememberSaveable { mutableStateOf(false) }
+    var pendingCoachPermission by rememberSaveable { mutableStateOf(false) }
 
     val context = LocalContext.current
     val micPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        if (granted) viewModel.toggleMic(true) else viewModel.onMicPermissionDenied()
+        if (granted) {
+            if (pendingCoachPermission) viewModel.toggleConversationCoach() else viewModel.toggleMic(true)
+        } else viewModel.onMicPermissionDenied()
+        pendingCoachPermission = false
     }
 
     val accent by animateColorAsState(
@@ -214,7 +218,10 @@ fun HomeScreen(
                     context, Manifest.permission.RECORD_AUDIO
                 ) == PackageManager.PERMISSION_GRANTED
             ) viewModel.toggleConversationCoach()
-            else micPermission.launch(Manifest.permission.RECORD_AUDIO)
+            else {
+                pendingCoachPermission = true
+                micPermission.launch(Manifest.permission.RECORD_AUDIO)
+            }
         }, modifier = Modifier.fillMaxWidth()) {
             Text(if (ui.conversationCoach) "إيقاف مساعد المحادثة الفرنسية" else "مساعد المحادثة الفرنسية")
         }
