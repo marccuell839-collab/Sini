@@ -14,14 +14,14 @@ from jarvis_win.core.state import AssistantState
 
 @dataclass(frozen=True)
 class Palette:
-    bg_deep: str = "#05070d"
-    bg_panel: str = "#0b1018"
-    bg_raised: str = "#121a26"
-    border: str = "#1e2a3a"
+    bg_deep: str = "#050409"
+    bg_panel: str = "#0d0a14"
+    bg_raised: str = "#191421"
+    border: str = "#36273b"
     text: str = "#e6eef8"
     text_dim: str = "#8fa3b8"
-    accent: str = "#3ddcff"
-    accent_soft: str = "#1b6b85"
+    accent: str = "#f67bbd"
+    accent_soft: str = "#794062"
     success: str = "#3ddc97"
     warn: str = "#ffc857"
     error: str = "#ff5d6c"
