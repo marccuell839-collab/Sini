@@ -25,6 +25,16 @@ class VoiceEngine @Inject constructor(
 ) {
 
     private val groq = GroqTtsProvider(http, secureStore, context.cacheDir)
+    private val deepgramBackup = DeepgramTtsProvider(http, secureStore, context.cacheDir)
+    private val quotaPrefs = context.getSharedPreferences("lora_voice_quota", Context.MODE_PRIVATE)
+    private val backupVoice = "aura-2-thalia-en"
+    fun wantsEnglishReply(): Boolean = isGroqCoolingDown() && !secureStore.deepgramKey.isNullOrBlank()
+    fun isGroqCoolingDown(): Boolean =
+        System.currentTimeMillis() < quotaPrefs.getLong("groq_retry_at", 0L)
+    private fun coolDown(seconds: Long) {
+        quotaPrefs.edit().putLong("groq_retry_at",
+            System.currentTimeMillis() + seconds.coerceIn(1L, 172800L) * 1000L).apply()
+    }
 
     private val audioManager = context.getSystemService(AudioManager::class.java)
     private var focusRequest: AudioFocusRequest? = null
@@ -33,7 +43,7 @@ class VoiceEngine @Inject constructor(
 
     @Volatile private var active: TtsProvider? = null
 
-    val providers: List<TtsProvider> get() = listOf(groq)
+    val providers: List<TtsProvider> get() = listOf(groq, deepgramBackup)
     suspend fun availableProviders(): List<TtsProvider> = providers.filter { it.isAvailable() }
     fun setExpressivity(value: Int) = Unit
 
@@ -56,15 +66,38 @@ class VoiceEngine @Inject constructor(
 
         requestFocus()
         try {
-            active = groq
-            if (!groq.isAvailable()) throw TtsException("أضف مفتاح Groq لتفعيل صوت لورا")
-            groq.speak(text, voice, pitch, rate, onAmplitude)
-            return SpokenBy("groq", false)
+            if (isGroqCoolingDown()) {
+                if (!deepgramBackup.isAvailable()) {
+                    throw TtsException("انتهت حصة صوت Groq. أضف مفتاح Deepgram.")
+                }
+                active = deepgramBackup
+                val english = if (containsArabic(text))
+                    "My Arabic voice is temporarily unavailable. I will speak English until it returns."
+                else text
+                deepgramBackup.speak(english, backupVoice, "0Hz", "0%", onAmplitude)
+                return SpokenBy("deepgram", true)
+            }
+            try {
+                active = groq
+                if (!groq.isAvailable()) throw TtsException("أضف مفتاح Groq لتفعيل صوت لورا")
+                groq.speak(text, voice, pitch, rate, onAmplitude)
+                return SpokenBy("groq", false)
+            } catch (limit: GroqSpeechRateLimit) {
+                coolDown(limit.retryAfterSeconds)
+                if (!deepgramBackup.isAvailable()) throw limit
+                active = deepgramBackup
+                val english = if (containsArabic(text))
+                    "My Arabic voice reached its usage limit. I will use my English voice for now."
+                else text
+                deepgramBackup.speak(english, backupVoice, "0Hz", "0%", onAmplitude)
+                return SpokenBy("deepgram", true)
+            }
         } finally {
             active = null
             abandonFocus()
         }
     }
+    private fun containsArabic(text: String): Boolean = text.any { it.code in 0x0600..0x06FF }
 
     /** Stop whatever is speaking. Safe at any time. */
     fun stop() {
