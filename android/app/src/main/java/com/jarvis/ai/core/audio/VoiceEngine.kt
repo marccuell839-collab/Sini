@@ -26,6 +26,7 @@ class VoiceEngine @Inject constructor(
 
     private val groq = GroqTtsProvider(http, secureStore, context.cacheDir)
     private val deepgramBackup = DeepgramTtsProvider(http, secureStore, context.cacheDir)
+    private val deepgramStream = DeepgramStreamingTts(http, secureStore)
     private val quotaPrefs = context.getSharedPreferences("lora_voice_quota", Context.MODE_PRIVATE)
     private val backupVoice = "aura-2-thalia-en"
     fun wantsEnglishReply(): Boolean = isGroqCoolingDown() && !secureStore.deepgramKey.isNullOrBlank()
@@ -43,7 +44,7 @@ class VoiceEngine @Inject constructor(
 
     @Volatile private var active: TtsProvider? = null
 
-    val providers: List<TtsProvider> get() = listOf(groq, deepgramBackup)
+    val providers: List<TtsProvider> get() = listOf(groq, deepgramStream, deepgramBackup)
     suspend fun availableProviders(): List<TtsProvider> = providers.filter { it.isAvailable() }
     fun setExpressivity(value: Int) = Unit
 
@@ -70,11 +71,11 @@ class VoiceEngine @Inject constructor(
                 if (!deepgramBackup.isAvailable()) {
                     throw TtsException("انتهت حصة صوت Groq. أضف مفتاح Deepgram.")
                 }
-                active = deepgramBackup
+                active = deepgramStream
                 val english = if (containsArabic(text))
                     "My Arabic voice is temporarily unavailable. I will speak English until it returns."
                 else text
-                deepgramBackup.speak(english, backupVoice, "0Hz", "0%", onAmplitude)
+                speakDeepgram(english, onAmplitude)
                 return SpokenBy("deepgram", true)
             }
             try {
@@ -97,6 +98,19 @@ class VoiceEngine @Inject constructor(
             abandonFocus()
         }
     }
+    private suspend fun speakDeepgram(text: String, onAmplitude: ((Float) -> Unit)?) {
+        try {
+            deepgramStream.speak(text, backupVoice, "0Hz", "0%", onAmplitude)
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            // Streaming may be unavailable for this key or network. Keep REST
+            // as the last fallback so the assistant never becomes silent.
+            active = deepgramBackup
+            deepgramBackup.speak(text, backupVoice, "0Hz", "0%", onAmplitude)
+        }
+    }
+
     private fun containsArabic(text: String): Boolean = text.any { it.code in 0x0600..0x06FF }
 
     /** Stop whatever is speaking. Safe at any time. */
