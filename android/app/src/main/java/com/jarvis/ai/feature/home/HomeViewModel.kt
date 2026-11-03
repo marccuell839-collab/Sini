@@ -183,7 +183,7 @@ class HomeViewModel @Inject constructor(
             model = current.model,
             instruction = utterance,
             registry = registry,
-            replyLanguage = "ar",
+            replyLanguage = if (voice.wantsEnglishReply()) "en" else "ar",
             history = history.toList(),
             limits = AgentRuntime.Limits(
                 maxToolCalls = current.maxToolCalls,
