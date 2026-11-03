@@ -185,7 +185,7 @@ class HomeViewModel @Inject constructor(
             stt.pauseUplink()
             SpeechPipeline(
                 scope = viewModelScope,
-                bufferUntilFinish = current.voiceProvider != "system",
+                bufferUntilFinish = current.voiceProvider == "groq",
                 speak = { chunk ->
                     go(AssistantState.SPEAKING)
                     voice.speak(
