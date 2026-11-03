@@ -6,6 +6,14 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.os.Bundle
 import android.util.Log
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
+import com.jarvis.ai.core.audio.VoiceEngine
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import kotlinx.coroutines.delay
@@ -27,7 +35,46 @@ import kotlin.coroutines.resume
  * settings, and the app does not pretend otherwise: every tool reports
  * honestly when the service is not connected.
  */
+@AndroidEntryPoint
 class JarvisAccessibilityService : AccessibilityService() {
+    @Inject lateinit var voiceEngine: VoiceEngine
+    private val proactiveScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var lastReactionAt = 0L
+    private var lastScanAt = 0L
+    private var reacting = false
+
+    private fun maybeReactToScreen(packageName: String, type: Int) {
+        if (packageName != "com.openai.chatgpt") return
+        if (type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
+            type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        if (!getSharedPreferences("lora_proactive", MODE_PRIVATE).getBoolean("enabled", false)) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (reacting || now - lastScanAt < 15000L || now - lastReactionAt < 600000L) return
+        lastScanAt = now
+        val labels = runCatching { describeScreen(60).map { it.text } }.getOrDefault(emptyList())
+        val found = labels.any { label ->
+            val lower = label.lowercase()
+            lower.contains("لورا") || lower.contains("lora") ||
+                lower.contains("جارفيس") || lower.contains("jarvis")
+        }
+        if (!found) return
+        lastReactionAt = now
+        reacting = true
+        proactiveScope.launch {
+            try {
+                // No screen content is transmitted to a language model.
+                val speech = if (voiceEngine.wantsEnglishReply())
+                    "Hey, are you talking about me?"
+                else "آه، راكم تهدروا عليا؟ أنا هنا يا سيدي!"
+                voiceEngine.speak(speech)
+            } catch (error: Exception) {
+                Log.w(TAG, "Proactive voice unavailable", error)
+            } finally {
+                reacting = false
+            }
+        }
+    }
+
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -42,6 +89,7 @@ class JarvisAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         instance = null
+        proactiveScope.cancel()
         super.onDestroy()
     }
 
@@ -50,6 +98,7 @@ class JarvisAccessibilityService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             foregroundPackage = packageName
         }
+        maybeReactToScreen(packageName, event.eventType)
     }
 
     override fun onInterrupt() {
