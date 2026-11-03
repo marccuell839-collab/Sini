@@ -86,11 +86,11 @@ class VoiceEngine @Inject constructor(
             } catch (limit: GroqSpeechRateLimit) {
                 coolDown(limit.retryAfterSeconds)
                 if (!deepgramBackup.isAvailable()) throw limit
-                active = deepgramBackup
+                active = deepgramStream
                 val english = if (containsArabic(text))
                     "My Arabic voice reached its usage limit. I will use my English voice for now."
                 else text
-                deepgramBackup.speak(english, backupVoice, "0Hz", "0%", onAmplitude)
+                speakDeepgram(english, onAmplitude)
                 return SpokenBy("deepgram", true)
             }
         } finally {
