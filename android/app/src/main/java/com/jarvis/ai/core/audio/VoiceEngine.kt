@@ -21,7 +21,7 @@ import javax.inject.Singleton
 class VoiceEngine @Inject constructor(
     private val context: Context,
     http: OkHttpClient,
-    secureStore: SecureStore,
+    private val secureStore: SecureStore,
 ) {
 
     private val groq = GroqTtsProvider(http, secureStore, context.cacheDir)
