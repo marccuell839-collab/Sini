@@ -15,6 +15,7 @@ from PySide6.QtCore import QObject, Signal, Slot
 
 from .config import Settings, get_azure_key, get_openrouter_key
 from .files import DeletionPlan, DeletionResult, execute
+from .groq_chat import answer as groq_answer
 from .intent import route
 from .listener import ListenerCallbacks, VoiceListener
 from .state import AssistantState
@@ -54,6 +55,8 @@ class Controller(QObject):
             AzureTtsProvider(azure_key, settings.azure_region),
         ]
 
+        self._conversation: list[dict] = []
+        self._chat_generation = 0
         self._listener: VoiceListener | None = None
         self._speak_thread: threading.Thread | None = None
         self._state = AssistantState.IDLE
@@ -124,12 +127,38 @@ class Controller(QObject):
 
         intent = route(text)
         if intent is None:
-            # Without the model wired in, say so rather than look broken.
-            if not get_openrouter_key():
-                self.error_shown.emit("هذا الطلب يحتاج نموذجًا — أضف مفتاح Groq من الإعدادات")
+            key = get_openrouter_key()
+            if not key:
+                self.error_shown.emit("أضف مفتاح Groq من إعدادات LORA")
                 self._go(AssistantState.ERROR)
-            else:
-                self._go(AssistantState.THINKING)
+                return
+
+            self._chat_generation += 1
+            generation = self._chat_generation
+            history = list(self._conversation)
+            self._go(AssistantState.THINKING)
+
+            def run_chat() -> None:
+                try:
+                    reply = groq_answer(key, text, model=self.settings.model, history=history)
+                except Exception as exc:
+                    if generation == self._chat_generation:
+                        self.error_shown.emit(str(exc))
+                        self._go(AssistantState.ERROR)
+                    return
+                if generation != self._chat_generation:
+                    return
+                self._conversation.extend([
+                    {"role": "user", "content": text},
+                    {"role": "assistant", "content": reply},
+                ])
+                self._conversation = self._conversation[-8:]
+                self.text_shown.emit(reply)
+                self._go(AssistantState.SUCCESS)
+                if self.settings.auto_speak and generation == self._chat_generation:
+                    self.speak(reply)
+
+            threading.Thread(target=run_chat, name="lora-groq-chat", daemon=True).start()
             return
 
         tool = self.registry.find(intent.tool)
@@ -188,6 +217,8 @@ class Controller(QObject):
     # ------------------------------------------------------------- voice
 
     def speak(self, text: str) -> None:
+        # Refresh the Groq key after saving changes in the settings dialog.
+        self._tts_providers[0].key = get_openrouter_key()
         provider = pick_tts(self._tts_providers, self.settings.tts_provider)
         if provider is None:
             self.error_shown.emit("لا يوجد محرّك نطق متاح")
@@ -208,6 +239,7 @@ class Controller(QObject):
     @Slot()
     def cancel(self) -> None:
         """Always available: an action the user cannot abort is a bug."""
+        self._chat_generation += 1
         self._stop_listening()
         for provider in self._tts_providers:
             try:
