@@ -46,6 +46,7 @@ data class HomeUiState(
     val activity: String? = null,
     val lastError: String? = null,
     val tokensThisSession: Int = 0,
+    val conversationCoach: Boolean = false,
 ) {
     val canCancel: Boolean get() = state.isBusy
 }
@@ -82,6 +83,14 @@ class HomeViewModel @Inject constructor(
     private var meterJob: Job? = null
     private var sttJob: Job? = null
     private var confirmation: CompletableDeferred<Boolean>? = null
+    private var lastCoachAt = 0L
+
+    fun toggleConversationCoach() {
+        val enabled = !_ui.value.conversationCoach
+        _ui.value = _ui.value.copy(conversationCoach = enabled,
+            activity = if (enabled) "مساعد المحادثة الفرنسية مفعّل — أخبر الطرف الآخر أنك تستعمله" else null)
+        if (enabled && !_ui.value.micOn) toggleMic(true)
+    }
 
     fun refreshKeyState() {
         _ui.value = _ui.value.copy(hasApiKey = !secureStore.openRouterKey.isNullOrBlank())
@@ -383,8 +392,18 @@ class HomeViewModel @Inject constructor(
             is SttEvent.Final -> {
                 _ui.value = _ui.value.copy(transcript = event.text, activity = null)
                 go(AssistantState.UNDERSTANDING)
-                // Hands-free: one spoken sentence is one instruction.
-                submit(event.text)
+                if (_ui.value.conversationCoach) {
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    if (now - lastCoachAt >= 12000L && !event.text.isBlank()) {
+                        lastCoachAt = now
+                        submit("أنت مساعد محادثة فرنسية مباشرة. هذا كلام سمعته أثناء محادثة بموافقة المشاركين: " +
+                            event.text + ". أعطني ترجمة عربية قصيرة، ثم جملة فرنسية طبيعية ومختصرة أقدر أقولها ردّاً عليه. " +
+                            "لا تنفذ أي أدوات أو إجراءات، ولا تتحدث مع الطرف الآخر مباشرة.")
+                    }
+                } else {
+                    // Hands-free: one spoken sentence is one instruction.
+                    submit(event.text)
+                }
             }
 
             is SttEvent.UtteranceEnd -> _ui.value = _ui.value.copy(activity = null)
@@ -407,7 +426,7 @@ class HomeViewModel @Inject constructor(
         stopListening()
         confirmation?.complete(false)
         voice.stop()
-        _ui.value = _ui.value.copy(micOn = false, pendingConfirmation = null, activity = null)
+        _ui.value = _ui.value.copy(micOn = false, conversationCoach = false, pendingConfirmation = null, activity = null)
         go(AssistantState.IDLE)
     }
 
