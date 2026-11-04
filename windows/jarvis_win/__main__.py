@@ -87,6 +87,12 @@ def _show_settings(window: MainWindow, settings: Settings, controller: Controlle
         voice.addItem(label, ident)
     voice.setCurrentIndex(max(0, voice.findData(settings.voice)))
     form.addRow("صوت Groq", voice)
+    silence = QComboBox()
+    for delay in sorted({250, 350, 500, 700, settings.endpoint_silence_ms}):
+        silence.addItem(f"{delay} ms", delay)
+    silence.setCurrentIndex(silence.findData(settings.endpoint_silence_ms))
+    silence.setToolTip("مهلة أقصر تستجيب أسرع، لكنها قد تقطع الوقفات بين الكلمات")
+    form.addRow("مهلة نهاية الكلام", silence)
     layout.addLayout(form)
     warning = QLabel(WARNING_AR)
     warning.setWordWrap(True)
@@ -127,6 +133,7 @@ def _show_settings(window: MainWindow, settings: Settings, controller: Controlle
     if key_input.text().strip() and not set_openrouter_key(key_input.text().strip()):
         QMessageBox.warning(window, "LORA", "تعذر حفظ المفتاح بشكل آمن في Windows Credential Manager")
         return
+    settings.endpoint_silence_ms = silence.currentData()
     settings.motion_intensity = "reduced" if reduced.isChecked() else "full"
     window.visualizer.set_reduced_motion(reduced.isChecked())
     settings.voice = voice.currentData()

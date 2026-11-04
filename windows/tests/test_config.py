@@ -66,3 +66,14 @@ class TestRedaction:
 
     def test_leaves_ordinary_text_alone(self):
         assert redact("لا يوجد اتصال بالإنترنت") == "لا يوجد اتصال بالإنترنت"
+
+def test_former_endpoint_default_migrates_to_fast_delay(temp_config):
+    path = Settings.path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({'endpoint_silence_ms': 700}), encoding='utf-8')
+    assert Settings.load().endpoint_silence_ms == 350
+
+
+def test_explicit_endpoint_choice_is_preserved(temp_config):
+    Settings(endpoint_silence_ms=700).save()
+    assert Settings.load().endpoint_silence_ms == 700

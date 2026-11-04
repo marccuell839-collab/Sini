@@ -57,7 +57,8 @@ class Settings:
     azure_region: str = ""
     # Silence that ends an utterance; lower feels snappier, higher is kinder
     # to people who pause mid-sentence.
-    endpoint_silence_ms: int = 700
+    endpoint_silence_ms: int = 350
+    endpoint_timing_version: int = 1
     # Folders deletion is permitted in. Empty means the defaults under home.
     allowed_delete_roots: list[str] = field(default_factory=list)
     voice_pitch: str = "-15Hz"
@@ -91,6 +92,9 @@ class Settings:
             return cls()
         if not isinstance(raw, dict):
             return cls()
+        # Migrate the former default once; retain subsequently chosen delays.
+        if "endpoint_timing_version" not in raw and raw.get("endpoint_silence_ms") == 700:
+            raw["endpoint_silence_ms"] = 350
         known = {f for f in cls().__dataclass_fields__}
         return cls(**{k: v for k, v in raw.items() if k in known})
 

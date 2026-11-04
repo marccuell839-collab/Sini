@@ -43,7 +43,7 @@ class EndpointConfig:
 
     #: Silence after speech that ends the utterance. Shorter feels snappier
     #: but clips people who pause mid-sentence; 700 ms is a usable middle.
-    endpoint_silence_ms: int = 700
+    endpoint_silence_ms: int = 350
     #: Speech shorter than this is discarded as noise.
     min_speech_ms: int = 250
     #: Hard cap on one utterance.

@@ -18,3 +18,6 @@ can reset enrollment or decrypt its stored representation.
 Microphone audio is captured only after activation or during explicit enrollment.
 The microphone stops after a completed utterance so TTS cannot trigger commands.
 The ZIP is unsigned; Windows may show a publisher warning. No API key is bundled.
+
+End-of-speech silence defaults to about 350 ms (formerly 700). Change it in
+Settings; shorter delays may split pauses. This does not change AI/network latency.
