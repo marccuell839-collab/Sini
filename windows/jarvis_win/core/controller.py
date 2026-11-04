@@ -13,13 +13,15 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from .config import Settings, get_azure_key, get_openrouter_key
+from .config import Settings, get_azure_key, get_openrouter_key, get_deepgram_key
 from .files import DeletionPlan, DeletionResult, execute
 from .groq_chat import answer as groq_answer
 from .intent import route
 from .listener import ListenerCallbacks, VoiceListener
 from .state import AssistantState
-from .stt import AzureSttProvider, SttProvider, Transcript, WhisperSttProvider
+from .owner_voice import OwnerVoice
+from .vad import EndpointConfig
+from .stt import DeepgramSttProvider, SttProvider, Transcript
 from .stt import pick_provider as pick_stt
 from .tools import ToolRegistry, ToolResult
 from .tts import AzureTtsProvider, Sapi5TtsProvider, GroqTtsProvider, TtsProvider, Voice
@@ -42,13 +44,11 @@ class Controller(QObject):
         super().__init__(parent)
         self.settings = settings
         self.registry = ToolRegistry()
+        self.owner_voice = OwnerVoice()
 
         # The Azure key lives in the OS credential store, never in settings.
         azure_key = get_azure_key()
-        self._stt_providers: list[SttProvider] = [
-            WhisperSttProvider(model_size=settings.whisper_model),
-            AzureSttProvider(azure_key, settings.azure_region),
-        ]
+        self._stt_providers: list[SttProvider] = [DeepgramSttProvider(get_deepgram_key())]
         self._tts_providers: list[TtsProvider] = [
             GroqTtsProvider(get_openrouter_key()),
             Sapi5TtsProvider(),
@@ -78,7 +78,8 @@ class Controller(QObject):
         return found
 
     def stt_available(self) -> SttProvider | None:
-        return pick_stt(self._stt_providers, self.settings.stt_provider)
+        self._stt_providers[0].api_key = get_deepgram_key()
+        return pick_stt(self._stt_providers, "deepgram")
 
     @Slot(bool)
     def set_listening(self, listening: bool) -> None:
@@ -86,22 +87,27 @@ class Controller(QObject):
             self._stop_listening()
             return
 
+        if self._listener is not None and self._listener.is_running:
+            return
+        self.cancel()
         provider = self.stt_available()
         if provider is None:
             self.error_shown.emit(
-                "لا يوجد محرّك تعرّف متاح. ثبّت faster-whisper أو اضبط مفتاح أزور."
+                "أضف مفتاح Deepgram من الإعدادات. يُرسل صوت السؤال إليه لتحويله إلى نص."
             )
             self._go(AssistantState.IDLE)
             return
 
         callbacks = ListenerCallbacks(
+            allow_audio=self._verify_audio,
             on_level=self.level_changed.emit,
             on_speech_started=lambda: self._go(AssistantState.LISTENING),
             on_transcribing=lambda: self._go(AssistantState.UNDERSTANDING),
             on_transcript=self._on_transcript,
-            on_error=self.error_shown.emit,
+            on_error=self._listen_error,
         )
-        self._listener = VoiceListener(provider, callbacks)
+        self._listener = VoiceListener(provider, callbacks, EndpointConfig(
+            endpoint_silence_ms=self.settings.endpoint_silence_ms))
         self._listener.start()
         self._go(AssistantState.LISTENING)
 
@@ -113,8 +119,26 @@ class Controller(QObject):
         if self._state in (AssistantState.LISTENING, AssistantState.UNDERSTANDING):
             self._go(AssistantState.IDLE)
 
+    def _listen_error(self, message: str) -> None:
+        self._stop_listening()
+        self.error_shown.emit(message)
+        self._go(AssistantState.ERROR)
+
+    def _verify_audio(self, pcm: bytes, sample_rate: int) -> bool:
+        try:
+            if self.owner_voice.enrolled:
+                matched, score = self.owner_voice.match(pcm, sample_rate)
+                if not matched:
+                    self._listen_error("لم تتطابق البصمة الصوتية؛ أعد المحاولة أو راجع الإعدادات")
+                    return False
+            return True
+        except Exception:
+            self._listen_error("تعذّر التحقق من الصوت؛ أعد التسجيل أو احذف البصمة من الإعدادات")
+            return False
+
     def _on_transcript(self, transcript: Transcript) -> None:
-        """Arrives on the listener thread; signals marshal it back to the UI."""
+        """One turn per activation prevents feedback from the assistant's TTS."""
+        self._stop_listening()
         self.text_shown.emit(transcript.text)
         self.handle_utterance(transcript.text)
 
@@ -217,6 +241,7 @@ class Controller(QObject):
     # ------------------------------------------------------------- voice
 
     def speak(self, text: str) -> None:
+        self._stop_listening()
         # Refresh the Groq key after saving changes in the settings dialog.
         self._tts_providers[0].key = get_openrouter_key()
         provider = pick_tts(self._tts_providers, self.settings.tts_provider)
@@ -224,14 +249,19 @@ class Controller(QObject):
             self.error_shown.emit("لا يوجد محرّك نطق متاح")
             return
 
+        generation = self._chat_generation
+
         def run() -> None:
+            if generation != self._chat_generation:
+                return
             self._go(AssistantState.SPEAKING)
             try:
                 provider.speak(text, self.settings.voice, self.settings.voice_pitch, self.settings.voice_rate)
             except Exception as exc:
                 self.error_shown.emit(str(exc))
             finally:
-                self._go(AssistantState.IDLE)
+                if generation == self._chat_generation:
+                    self._go(AssistantState.IDLE)
 
         self._speak_thread = threading.Thread(target=run, name="jarvis-speak", daemon=True)
         self._speak_thread.start()

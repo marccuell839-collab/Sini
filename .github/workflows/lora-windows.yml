@@ -2,9 +2,9 @@ name: Build LORA Windows EXE
 on:
   push:
     branches: [main]
-    paths:
-      - "windows/**"
-      - ".github/workflows/lora-windows.yml"
+    paths: ["windows/**", ".github/workflows/lora-windows.yml"]
+  pull_request:
+    paths: ["windows/**", ".github/workflows/lora-windows.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -12,6 +12,8 @@ jobs:
   windows:
     runs-on: windows-latest
     timeout-minutes: 45
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: windows
@@ -20,28 +22,62 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: pip
+          cache-dependency-path: windows/requirements*.txt
       - name: Install dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-stt.txt
-          pip install pytest pyinstaller
-      - name: Unit and UI smoke tests
+          pip install -r requirements.txt pytest pyinstaller
+          if ($LASTEXITCODE -ne 0) { throw "Dependency installation failed" }
+      - name: Fetch verified local speaker model
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force models | Out-Null
+          Invoke-WebRequest 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34.onnx' -OutFile models/speaker.onnx
+          if ((Get-FileHash models/speaker.onnx -Algorithm SHA256).Hash -ne '5EF208A9DA1453335308A6B6F4E6DFBD7E183A38B604DE0A57664F45D257FE94') { throw 'Speaker model checksum mismatch' }
+      - name: Unit and UI tests
         shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
           PYTHONPATH: .
-        run: python -m pytest tests -q
+        run: python -m pytest tests -q -ra --junitxml=test-results.xml
       - name: Package Windows application
         shell: pwsh
         run: pyinstaller --noconfirm jarvis.spec
-      - name: Verify Windows EXE
+      - name: Launch packaged EXE and test bundled speaker model
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $p = Start-Process -FilePath "$PWD/dist/LORA/LORA.exe" -ArgumentList '--smoke-test' -PassThru -WindowStyle Hidden
+          if (!$p.WaitForExit(120000)) { $p.Kill(); throw 'EXE smoke test timed out' }
+          if ($p.ExitCode -ne 0) { throw "EXE smoke test failed: $($p.ExitCode)" }
+      - name: Prepare portable ZIP
         shell: pwsh
         run: |
-          if (!(Test-Path "dist/LORA/LORA.exe")) { throw "LORA.exe missing" }
-      - name: Upload LORA Windows
+          Copy-Item PORTABLE-README.txt dist/LORA/README.txt
+          Copy-Item MODEL-NOTICE.txt dist/LORA/MODEL-NOTICE.txt
+          Compress-Archive -Path dist/LORA -DestinationPath dist/LORA-Windows.zip
+          (Get-FileHash dist/LORA-Windows.zip -Algorithm SHA256).Hash | Set-Content dist/LORA-Windows.zip.sha256
+      - name: Upload verified Windows package
         uses: actions/upload-artifact@v4
         with:
           name: LORA-Windows-EXE
-          path: windows/dist/LORA/
+          path: |
+            windows/dist/LORA-Windows.zip
+            windows/dist/LORA-Windows.zip.sha256
+            windows/test-results.xml
           if-no-files-found: error
+      - name: Publish downloadable portable build
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: lora-windows-${{ github.sha }}
+          name: LORA Windows ${{ github.sha }}
+          prerelease: true
+          body: 'Portable Windows x64 build. Extract the entire ZIP and run LORA/LORA.exe. Unit tests and packaged EXE smoke test passed on Windows. Speaker similarity is experimental, cannot resist replay or voice cloning, and never replaces manual approval of dangerous actions. Deepgram transcribes Arabic audio online; no Whisper download. Deepgram and Groq each require a separate key and network access.'
+          files: |
+            windows/dist/LORA-Windows.zip
+            windows/dist/LORA-Windows.zip.sha256
+          fail_on_unmatched_files: true

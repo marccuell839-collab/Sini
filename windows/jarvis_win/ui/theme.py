@@ -14,7 +14,7 @@ from jarvis_win.core.state import AssistantState
 
 @dataclass(frozen=True)
 class Palette:
-    bg_deep: str = "#050409"
+    bg_deep: str = "#000000"
     bg_panel: str = "#0d0a14"
     bg_raised: str = "#191421"
     border: str = "#36273b"

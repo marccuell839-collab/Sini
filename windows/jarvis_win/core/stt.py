@@ -64,6 +64,65 @@ def pcm_to_wav(pcm: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
     return buffer.getvalue()
 
 
+class DeepgramSttProvider(SttProvider):
+    """Arabic Nova-3 transcription over HTTPS; no local ASR model download."""
+
+    id = "deepgram"
+    label = "Deepgram عربي (سحابي)"
+
+    def __init__(self, api_key: str | None):
+        self.api_key = api_key
+
+    def is_available(self) -> bool:
+        return bool(self.api_key and self.api_key.strip())
+
+    def transcribe(self, pcm: bytes, sample_rate: int = SAMPLE_RATE) -> Transcript:
+        import httpx
+        import math
+
+        if not self.is_available():
+            raise SttError("أضف مفتاح Deepgram من إعدادات LORA للتعرّف على الكلام")
+        if sample_rate != SAMPLE_RATE or len(pcm) % 2:
+            raise SttError("صيغة الصوت غير صالحة: يلزم PCM 16-bit mono 16000 Hz")
+        if not pcm:
+            return Transcript(text="", language="ar")
+        try:
+            response = httpx.post(
+                "https://api.deepgram.com/v1/listen",
+                params={"model": "nova-3", "language": "ar", "smart_format": "true",
+                        "punctuate": "true"},
+                headers={"Authorization": f"Token {self.api_key.strip()}",
+                         "Content-Type": "audio/wav"},
+                content=pcm_to_wav(pcm, sample_rate),
+                timeout=httpx.Timeout(25.0, connect=8.0),
+            )
+        except httpx.TimeoutException as exc:
+            raise SttError("تأخر Deepgram؛ تحقق من الإنترنت وأعد المحاولة") from exc
+        except httpx.HTTPError as exc:
+            raise SttError("تعذّر الاتصال بـ Deepgram؛ تحقق من الإنترنت") from exc
+        if response.status_code in (401, 403):
+            raise SttError("رفض Deepgram المفتاح؛ راجعه في الإعدادات")
+        if response.status_code == 402:
+            raise SttError("رصيد Deepgram غير كافٍ؛ راجع حسابك")
+        if response.status_code == 429:
+            raise SttError("تجاوزت حصة Deepgram مؤقتاً؛ حاول بعد قليل")
+        if response.status_code >= 400:
+            raise SttError(f"خطأ من Deepgram (HTTP {response.status_code})")
+        try:
+            best = response.json()["results"]["channels"][0]["alternatives"][0]
+            text = best["transcript"]
+            if not isinstance(text, str):
+                raise ValueError("Invalid transcript")
+            confidence = best.get("confidence")
+            if (isinstance(confidence, bool) or not isinstance(confidence, (int, float))
+                    or not math.isfinite(confidence) or not 0 <= confidence <= 1):
+                confidence = None
+        except (ValueError, KeyError, IndexError, TypeError) as exc:
+            raise SttError("أرجع Deepgram نتيجة غير صالحة؛ أعد المحاولة") from exc
+        return Transcript(text=text.strip(), language="ar", confidence=confidence,
+                          duration_ms=len(pcm) * 1000 // (2 * sample_rate))
+
+
 class WhisperSttProvider(SttProvider):
     """faster-whisper, running on this machine.
 

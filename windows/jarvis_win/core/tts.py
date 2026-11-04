@@ -505,6 +505,8 @@ def _speech_chunks(text: str, max_chars: int = 180) -> list[str]:
 
 def play_wav(data: bytes, stop_flag: threading.Event | None = None) -> None:
     """Read the actual WAV header before playing 16-bit PCM with sounddevice."""
+    if stop_flag is not None and stop_flag.is_set():
+        return
     import io
     import wave
     import numpy as np

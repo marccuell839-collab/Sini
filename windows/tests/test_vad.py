@@ -231,3 +231,17 @@ class TestDetectorSelection:
     def test_a_detector_is_always_available(self):
         # Packaging must never leave the app with no way to hear.
         assert make_detector().name in {"webrtc", "energy"}
+
+def test_fast_default_ends_after_about_350_ms():
+    ep = Endpointer()
+    assert EndpointConfig().endpoint_silence_ms == 350
+    assert Event.SPEECH_STARTED in feed(ep, 's' * 30)
+    assert Event.SPEECH_ENDED not in feed(ep, '.' * 17)  # 340 ms
+    assert ep.push(False) is Event.SPEECH_ENDED  # 360 ms at 20 ms frame resolution
+
+
+def test_fast_default_keeps_short_pause_in_same_utterance():
+    ep = Endpointer()
+    events = feed(ep, 's' * 30 + '.' * 10 + 's' * 20 + '.' * 18)
+    assert events.count(Event.SPEECH_STARTED) == 1
+    assert events.count(Event.SPEECH_ENDED) == 1

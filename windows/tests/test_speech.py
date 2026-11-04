@@ -162,3 +162,11 @@ class TestVoiceCatalogue:
     def test_both_genders_are_offered(self):
         genders = {v.gender for v in AzureTtsProvider("k", "r").voices()}
         assert genders == {"Male", "Female"}
+
+def test_cancelled_wav_never_starts_playback():
+    import threading
+    from jarvis_win.core.tts import play_wav
+    stop = threading.Event()
+    stop.set()
+    # Returning before parsing/playing also covers a late HTTP response after Esc.
+    play_wav(b'cancelled payload', stop)
