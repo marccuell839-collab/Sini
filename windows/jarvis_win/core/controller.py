@@ -14,271 +14,157 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal, Slot
 
 from .config import Settings, get_azure_key, get_openrouter_key
-from .files import DeletionPlan, DeletionResult, execute
-from .groq_chat import answer as groq_answer
-from .intent import route
-from .listener import ListenerCallbacks, VoiceListener
-from .state import AssistantState
-from .owner_voice import OwnerVoice
-from .vad import EndpointConfig
-from .stt import AzureSttProvider, SttProvider, Transcript, WhisperSttProvider
-from .stt import pick_provider as pick_stt
-from .tools import ToolRegistry, ToolResult
-from .tts import AzureTtsProvider, Sapi5TtsProvider, GroqTtsProvider, TtsProvider, Voice
-from .tts import pick_provider as pick_tts
+from .files import DeletionPlan, Deleti…13417 tokens truncated…n(t * 1.1) + self._energy * 0.05
+        ring_r = max_r * 0.78 * breathe
+        body_r = ring_r * 0.90
 
-log = logging.getLogger(__name__)
+        self._draw_glow(painter, centre, ring_r, accent)
+        self._draw_body(painter, centre, body_r, accent)
 
+        painter.save()
+        clip = QPainterPath()
+        clip.addEllipse(centre, body_r, body_r)
+        painter.setClipPath(clip)
+        self._draw_flow(painter, centre, body_r, accent, t)
+        painter.restore()
 
-class Controller(QObject):
-    """Owns the moving parts; the window only renders what it emits."""
+        self._draw_rim(painter, centre, body_r, accent)
+        self._draw_ring(painter, centre, ring_r, accent)
+        self._draw_dots(painter, centre, ring_r * 1.10, accent, t)
+        painter.end()
 
-    state_changed = Signal(object)  # AssistantState
-    level_changed = Signal(float)
-    text_shown = Signal(str)
-    error_shown = Signal(str)
-    #: (summary, plan) — the window must confirm before anything is deleted.
-    approval_requested = Signal(str, object)
+    def _draw_glow(self, painter: QPainter, centre: QPointF, radius: float, accent: QColor) -> None:
+        # Fade fully before the widget edge, so the black surface stays seamless.
+        reach = min(min(self.width(), self.height()) * .495,
+                    radius * (1.75 + self._energy * 0.35))
+        strength = (0.30 if self._active else 0.18) + self._energy * 0.22
 
-    def __init__(self, settings: Settings, parent: QObject | None = None) -> None:
-        super().__init__(parent)
-        self.settings = settings
-        self.registry = ToolRegistry()
-        self.owner_voice = OwnerVoice()
+        gradient = QRadialGradient(centre, reach)
+        inner = QColor(accent)
+        inner.setAlphaF(min(1.0, strength * 0.55))
+        mid = QColor(accent)
+        mid.setAlphaF(min(1.0, strength * 0.22))
+        outer = QColor(accent)
+        outer.setAlpha(0)
+        gradient.setColorAt(0.0, inner)
+        gradient.setColorAt(0.45, mid)
+        gradient.setColorAt(1.0, outer)
 
-        # The Azure key lives in the OS credential store, never in settings.
-        azure_key = get_azure_key()
-        self._stt_providers: list[SttProvider] = [
-            WhisperSttProvider(model_size=settings.whisper_model),
-            AzureSttProvider(azure_key, settings.azure_region),
-        ]
-        self._tts_providers: list[TtsProvider] = [
-            GroqTtsProvider(get_openrouter_key()),
-            Sapi5TtsProvider(),
-            AzureTtsProvider(azure_key, settings.azure_region),
-        ]
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(gradient)
+        painter.drawEllipse(centre, reach, reach)
 
-        self._conversation: list[dict] = []
-        self._chat_generation = 0
-        self._listener: VoiceListener | None = None
-        self._speak_thread: threading.Thread | None = None
-        self._state = AssistantState.IDLE
+    def _draw_body(self, painter: QPainter, centre: QPointF, radius: float, accent: QColor) -> None:
+        focus = QPointF(centre.x() - radius * 0.2, centre.y() - radius * 0.25)
+        gradient = QRadialGradient(focus, radius * 1.4)
+        gradient.setColorAt(0.0, _mix(QColor("#071523"), accent, 0.10))
+        gradient.setColorAt(0.70, QColor("#040A14"))
+        gradient.setColorAt(1.0, QColor("#02060C"))
 
-    # ------------------------------------------------------------- state
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(gradient)
+        painter.drawEllipse(centre, radius, radius)
 
-    def _go(self, state: AssistantState) -> None:
-        self._state = state
-        self.state_changed.emit(state)
+    def _draw_flow(self, painter: QPainter, centre: QPointF, radius: float, accent: QColor, t: float) -> None:
+        layers = LAYERS // 2 if self._reduced else LAYERS
+        points = POINTS // 2 if self._reduced else POINTS
+        swing = (0.16 if self._active else 0.09) + self._energy * 0.30
+        speed = 0.35 if self._reduced else 1.0
 
-    # --------------------------------------------------------- dictation
+        painter.setBrush(Qt.BrushStyle.NoBrush)
 
-    def available_voices(self) -> list[Voice]:
-        """Every voice the machine can actually speak with, both engines."""
-        found: list[Voice] = []
-        for provider in self._tts_providers:
-            if provider.is_available():
-                found.extend(provider.voices())
-        return found
+        for i in range(layers):
+            f = i / max(1, layers - 1)
+            base = radius * (0.22 + 0.76 * f)
+            phase = t * speed * (0.9 + f * 0.5) + i * 0.38
 
-    def stt_available(self) -> SttProvider | None:
-        return pick_stt(self._stt_providers, self.settings.stt_provider)
+            path = QPainterPath()
+            for j in range(points + 1):
+                a = (j / points) * 2 * math.pi
+                # Three harmonics: a slow lobe, a faster ripple, and a
+                # counter-rotating one. Together they read as flowing silk
+                # rather than a repeating loop.
+                wobble = (
+                    0.52 * math.sin(3 * a + phase)
+                    + 0.30 * math.sin(5 * a - phase * 1.27)
+                    + 0.18 * math.sin(2 * a + phase * 0.63)
+                )
+                r = base * (1 + swing * wobble)
+                x = centre.x() + math.cos(a) * r
+                # Squashed vertically: a sphere seen slightly from above.
+                y = centre.y() + math.sin(a) * r * 0.93
+                if j == 0:
+                    path.moveTo(x, y)
+                else:
+                    path.lineTo(x, y)
+            path.closeSubpath()
 
-    @Slot(bool)
-    def set_listening(self, listening: bool) -> None:
-        if not listening:
-            self._stop_listening()
-            return
+            lit = max(0.0, min(1.0, 1 - abs(f - 0.55) * 1.6))
+            alpha = (0.10 + 0.34 * lit) * (0.75 + self._energy * 0.5)
+            colour = _mix(accent, QColor("#FFFFFF"), 0.18 * lit)
+            colour.setAlphaF(max(0.0, min(0.85, alpha)))
 
-        if self._listener is not None and self._listener.is_running:
-            return
-        self.cancel()
-        provider = self.stt_available()
-        if provider is None:
-            self.error_shown.emit(
-                "لا يوجد محرّك تعرّف متاح. ثبّت faster-whisper أو اضبط مفتاح أزور."
+            painter.setPen(QPen(colour, 1.15))
+            painter.drawPath(path)
+
+    def _draw_rim(self, painter: QPainter, centre: QPointF, radius: float, accent: QColor) -> None:
+        gradient = QRadialGradient(centre, radius)
+        transparent = QColor(accent)
+        transparent.setAlpha(0)
+        edge = QColor(accent)
+        edge.setAlphaF(min(1.0, 0.30 + self._energy * 0.25))
+        lip = _mix(accent, QColor("#FFFFFF"), 0.5)
+        lip.setAlphaF(min(1.0, 0.55 + self._energy * 0.3))
+
+        gradient.setColorAt(0.80, transparent)
+        gradient.setColorAt(0.96, edge)
+        gradient.setColorAt(1.0, lip)
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(gradient)
+        painter.drawEllipse(centre, radius, radius)
+
+        # The specular catch, low and to one side.
+        spec = _mix(accent, QColor("#FFFFFF"), 0.65)
+        spec.setAlphaF(0.75)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(spec, 2.2))
+        box = QRectF(centre.x() - radius, centre.y() - radius, radius * 2, radius * 2)
+        painter.drawArc(box, int(118 * 16), int(70 * 16))
+
+    def _draw_ring(self, painter: QPainter, centre: QPointF, radius: float, accent: QColor) -> None:
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        # Several wider, fainter passes stand in for a bloom.
+        for width, alpha in ((9.0, 0.07), (5.0, 0.13), (2.6, 0.28)):
+            colour = QColor(accent)
+            colour.setAlphaF(min(1.0, alpha * (0.8 + self._energy * 0.6)))
+            painter.setPen(QPen(colour, width))
+            painter.drawEllipse(centre, radius, radius)
+
+        hard = _mix(accent, QColor("#FFFFFF"), 0.35)
+        hard.setAlphaF(0.95)
+        painter.setPen(QPen(hard, 1.4))
+        painter.drawEllipse(centre, radius, radius)
+
+    def _draw_dots(self, painter: QPainter, centre: QPointF, radius: float, accent: QColor, t: float) -> None:
+        dots = DOTS // 2 if self._reduced else DOTS
+        sweep_speed = 0.3 if self._reduced else 0.9
+
+        painter.save()
+        painter.translate(centre)
+        painter.rotate(t * 6)
+        painter.setPen(Qt.PenStyle.NoPen)
+
+        for i in range(dots):
+            a = (i / dots) * 2 * math.pi
+            # Brightness sweeps around, which reads as rotation without
+            # every dot blinking independently.
+            wave = math.sin(a - t * sweep_speed * 2)
+            alpha = (0.12 + 0.55 * ((wave + 1) / 2)) * (0.7 + self._energy * 0.6)
+            colour = QColor(accent)
+            colour.setAlphaF(max(0.0, min(0.9, alpha)))
+            painter.setBrush(colour)
+            painter.drawEllipse(
+                QPointF(math.cos(a) * radius, math.sin(a) * radius * 0.97), 1.5, 1.5
             )
-            self._go(AssistantState.IDLE)
-            return
-
-        callbacks = ListenerCallbacks(
-            allow_audio=self._verify_audio,
-            on_level=self.level_changed.emit,
-            on_speech_started=lambda: self._go(AssistantState.LISTENING),
-            on_transcribing=lambda: self._go(AssistantState.UNDERSTANDING),
-            on_transcript=self._on_transcript,
-            on_error=self._listen_error,
-        )
-        self._listener = VoiceListener(provider, callbacks, EndpointConfig(
-            endpoint_silence_ms=self.settings.endpoint_silence_ms))
-        self._listener.start()
-        self._go(AssistantState.LISTENING)
-
-    def _stop_listening(self) -> None:
-        if self._listener is not None:
-            self._listener.stop()
-            self._listener = None
-        self.level_changed.emit(0.0)
-        if self._state in (AssistantState.LISTENING, AssistantState.UNDERSTANDING):
-            self._go(AssistantState.IDLE)
-
-    def _listen_error(self, message: str) -> None:
-        self._stop_listening()
-        self.error_shown.emit(message)
-        self._go(AssistantState.ERROR)
-
-    def _verify_audio(self, pcm: bytes, sample_rate: int) -> bool:
-        try:
-            if self.owner_voice.enrolled:
-                matched, score = self.owner_voice.match(pcm, sample_rate)
-                if not matched:
-                    self._listen_error("لم تتطابق البصمة الصوتية؛ أعد المحاولة أو راجع الإعدادات")
-                    return False
-            return True
-        except Exception:
-            self._listen_error("تعذّر التحقق من الصوت؛ أعد التسجيل أو احذف البصمة من الإعدادات")
-            return False
-
-    def _on_transcript(self, transcript: Transcript) -> None:
-        """One turn per activation prevents feedback from the assistant's TTS."""
-        self._stop_listening()
-        self.text_shown.emit(transcript.text)
-        self.handle_utterance(transcript.text)
-
-    # ----------------------------------------------------------- command
-
-    @Slot(str)
-    def handle_utterance(self, text: str) -> None:
-        if not text.strip():
-            return
-
-        intent = route(text)
-        if intent is None:
-            key = get_openrouter_key()
-            if not key:
-                self.error_shown.emit("أضف مفتاح Groq من إعدادات LORA")
-                self._go(AssistantState.ERROR)
-                return
-
-            self._chat_generation += 1
-            generation = self._chat_generation
-            history = list(self._conversation)
-            self._go(AssistantState.THINKING)
-
-            def run_chat() -> None:
-                try:
-                    reply = groq_answer(key, text, model=self.settings.model, history=history)
-                except Exception as exc:
-                    if generation == self._chat_generation:
-                        self.error_shown.emit(str(exc))
-                        self._go(AssistantState.ERROR)
-                    return
-                if generation != self._chat_generation:
-                    return
-                self._conversation.extend([
-                    {"role": "user", "content": text},
-                    {"role": "assistant", "content": reply},
-                ])
-                self._conversation = self._conversation[-8:]
-                self.text_shown.emit(reply)
-                self._go(AssistantState.SUCCESS)
-                if self.settings.auto_speak and generation == self._chat_generation:
-                    self.speak(reply)
-
-            threading.Thread(target=run_chat, name="lora-groq-chat", daemon=True).start()
-            return
-
-        tool = self.registry.find(intent.tool)
-        if tool is None:
-            self.error_shown.emit(f"الأداة '{intent.tool}' غير متاحة على الحاسوب")
-            self._go(AssistantState.ERROR)
-            return
-
-        self._go(AssistantState.EXECUTING)
-        result: ToolResult = tool.run(dict(intent.args))
-        self._finish_tool(result)
-
-    def _finish_tool(self, result: ToolResult) -> None:
-        if result.pending is not None:
-            # Deletion stops here until the user approves the exact list.
-            self.approval_requested.emit(result.summary, result.pending)
-            self._go(AssistantState.IDLE)
-            return
-
-        self.text_shown.emit(result.summary)
-        self._go(AssistantState.SUCCESS if result.ok else AssistantState.ERROR)
-        if result.ok and self.settings.auto_speak:
-            self.speak(result.summary)
-
-    @Slot(object)
-    def approve_deletion(self, plan: DeletionPlan) -> None:
-        """Run a plan the user approved, and report exactly what happened."""
-        audit = Path(self.settings.path()).parent / "deletions.tsv"
-        try:
-            outcome: DeletionResult = execute(plan, audit_path=audit)
-        except Exception as exc:
-            self.error_shown.emit(str(exc))
-            self._go(AssistantState.ERROR)
-            return
-
-        if outcome.failed and not outcome.deleted:
-            self.error_shown.emit(f"تعذّر حذف {len(outcome.failed)} عنصرًا")
-            self._go(AssistantState.ERROR)
-            return
-
-        message = f"حُذف {len(outcome.deleted)} عنصرًا"
-        if outcome.failed:
-            message += f"، وتعذّر حذف {len(outcome.failed)}"
-        if not plan.permanent:
-            message += " (في سلّة المحذوفات)"
-        self.text_shown.emit(message)
-        self._go(AssistantState.SUCCESS)
-        if self.settings.auto_speak:
-            self.speak(message)
-
-    @Slot()
-    def reject_deletion(self) -> None:
-        self.text_shown.emit("أُلغي الحذف")
-        self._go(AssistantState.IDLE)
-
-    # ------------------------------------------------------------- voice
-
-    def speak(self, text: str) -> None:
-        self._stop_listening()
-        # Refresh the Groq key after saving changes in the settings dialog.
-        self._tts_providers[0].key = get_openrouter_key()
-        provider = pick_tts(self._tts_providers, self.settings.tts_provider)
-        if provider is None:
-            self.error_shown.emit("لا يوجد محرّك نطق متاح")
-            return
-
-        generation = self._chat_generation
-
-        def run() -> None:
-            if generation != self._chat_generation:
-                return
-            self._go(AssistantState.SPEAKING)
-            try:
-                provider.speak(text, self.settings.voice, self.settings.voice_pitch, self.settings.voice_rate)
-            except Exception as exc:
-                self.error_shown.emit(str(exc))
-            finally:
-                if generation == self._chat_generation:
-                    self._go(AssistantState.IDLE)
-
-        self._speak_thread = threading.Thread(target=run, name="jarvis-speak", daemon=True)
-        self._speak_thread.start()
-
-    @Slot()
-    def cancel(self) -> None:
-        """Always available: an action the user cannot abort is a bug."""
-        self._chat_generation += 1
-        self._stop_listening()
-        for provider in self._tts_providers:
-            try:
-                provider.stop()
-            except Exception:
-                log.debug("stop on an idle provider")
-        self._go(AssistantState.IDLE)
-
-    def shutdown(self) -> None:
-        self.cancel()
+        painter.restore()

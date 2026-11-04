@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QVBoxLayout,
     QWidget,
-    QApplication,
 )
 
 from jarvis_win.core.config import Settings
@@ -48,7 +47,7 @@ class MainWindow(QWidget):
         self._mic_on = False
 
         self.setWindowTitle("LORA")
-        self.setMinimumSize(640, 480)
+        self.setMinimumSize(490, 610)
         self.setStyleSheet(stylesheet())
         if settings.language == "ar":
             self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
@@ -61,57 +60,86 @@ class MainWindow(QWidget):
     # -------------------------------------------------------------- layout
 
     def _build(self) -> None:
-        # A single surface; controls live in Settings or on the orb itself.
-        self.settings_btn = QPushButton("⚙", self)
-        self.settings_btn.setAccessibleName("الإعدادات")
-        self.settings_btn.setToolTip("الإعدادات · F11 ملء الشاشة · Esc إيقاف")
-        self.settings_btn.clicked.connect(self.settings_requested.emit)
-        self.settings_btn.setFixedSize(48, 48)
-        self.visualizer = JarvisOrb(self)
-        self.visualizer.set_reduced_motion(self.settings.motion_intensity != "full")
-        self.visualizer.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.visualizer.setToolTip("اضغط للاستماع أو الإيقاف · Space")
-        self.visualizer.mouseReleaseEvent = lambda event: self.toggle_listening()
-        self.status_label = QLabel(self)
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.transcript = QLabel(self)
-        self.transcript.setWordWrap(True)
-        self.transcript.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        # Compatibility entry points for integrations, never placed on the surface.
-        self.input = QLineEdit(self)
-        self.input.hide()
-        self.mic_btn = QPushButton(self)
-        self.mic_btn.setCheckable(True)
-        self.mic_btn.hide()
-        self.cancel_btn = QPushButton(self)
-        self.cancel_btn.hide()
-        self.connection_dot = QLabel(self)
-        self.connection_dot.hide()
-        self.voice_picker = QComboBox(self)
-        self.voice_picker.hide()
+        root = QVBoxLayout(self)
+        root.setContentsMargins(26, 22, 26, 22)
+        root.setSpacing(12)
+
+        # --- header -------------------------------------------------------
+        header = QHBoxLayout()
+        title = QLabel("L O R A")
+        title.setObjectName("title")
+        title.setFont(QFont(title.font().family(), 20, QFont.Weight.DemiBold))
+        header.addWidget(title)
+        header.addStretch(1)
+
+        self.connection_dot = QLabel("●")
+        self.connection_dot.setToolTip("حالة الاتصال بالخادم")
+        header.addWidget(self.connection_dot)
+
+        self.voice_picker = QComboBox()
+        self.voice_picker.setToolTip("الصوت")
+        self.voice_picker.setMinimumWidth(130)
         self.voice_picker.currentIndexChanged.connect(self._on_voice_changed)
-        QShortcut(QKeySequence("Space"), self, activated=self.toggle_listening)
-        QShortcut(QKeySequence("F11"), self, activated=self.toggle_fullscreen)
-        QShortcut(QKeySequence("Ctrl+Q"), self, activated=QApplication.instance().quit)
+        header.addWidget(self.voice_picker)
 
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        side = max(260, min(int(self.height() * .70), int(self.width() * .72), 820))
-        x, y = (self.width() - side) // 2, (self.height() - side) // 2
-        self.visualizer.setGeometry(x, y, side, side)
-        self.settings_btn.move(self.width() - 72, 24)
-        self.status_label.setGeometry(24, y + side - 12, self.width() - 48, 36)
-        self.transcript.setGeometry(self.width() // 6, y + side + 28,
-                                    self.width() * 2 // 3, max(36, self.height() - y - side - 40))
+        settings_btn = QPushButton("الإعدادات")
+        settings_btn.clicked.connect(self.settings_requested.emit)
+        settings_btn.setToolTip("إعداد Groq والصوت")
+        header.addWidget(settings_btn)
+        root.addLayout(header)
 
-    def toggle_fullscreen(self) -> None:
-        self.showNormal() if self.isFullScreen() else self.showFullScreen()
+        # --- visualiser panel --------------------------------------------
+        panel = QFrame()
+        panel.setObjectName("panel")
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(14, 8, 14, 8)
+        panel_layout.setSpacing(12)
 
-    def toggle_listening(self) -> None:
-        if self.machine.busy or self._mic_on:
-            self._on_cancel()
-        else:
-            self._on_mic(True)
+        self.visualizer = JarvisOrb()
+        self.visualizer.set_reduced_motion(self.settings.motion_intensity != "full")
+        panel_layout.addWidget(self.visualizer)
+
+        self.status_label = QLabel()
+        self.status_label.setObjectName("status")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        panel_layout.addWidget(self.status_label)
+        root.addWidget(panel)
+
+        # --- response -----------------------------------------------------
+        self.transcript = QLabel("")
+        self.transcript.setObjectName("transcript")
+        self.transcript.setWordWrap(True)
+        self.transcript.setAlignment(
+            Qt.AlignmentFlag.AlignTop
+            | (Qt.AlignmentFlag.AlignRight if self.settings.language == "ar" else Qt.AlignmentFlag.AlignLeft)
+        )
+        self.transcript.setMinimumHeight(90)
+        root.addWidget(self.transcript, 1)
+
+        # --- input --------------------------------------------------------
+        input_row = QHBoxLayout()
+        self.input = QLineEdit()
+        self.input.setPlaceholderText("اكتب أمرك، أو اضغط على الميكروفون")
+        self.input.returnPressed.connect(self._on_submit)
+        input_row.addWidget(self.input, 1)
+
+        self.mic_btn = QPushButton("🎙 تحدّث")
+        self.mic_btn.setObjectName("primary")
+        self.mic_btn.setCheckable(True)
+        self.mic_btn.clicked.connect(self._on_mic)
+        input_row.addWidget(self.mic_btn)
+
+        self.cancel_btn = QPushButton("إيقاف")
+        self.cancel_btn.setObjectName("danger")
+        self.cancel_btn.clicked.connect(self._on_cancel)
+        self.cancel_btn.setEnabled(False)
+        input_row.addWidget(self.cancel_btn)
+        root.addLayout(input_row)
+
+        hint = QLabel("Ctrl+Alt+J للتفعيل من أي مكان · Esc للإيقاف")
+        hint.setObjectName("status")
+        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        root.addWidget(hint)
 
     # --------------------------------------------------------------- state
 
@@ -120,9 +148,7 @@ class MainWindow(QWidget):
         self._apply_state(current)
 
     def _apply_state(self, state: AssistantState) -> None:
-        self.status_label.setText(self.machine.status_ar + (" · اضغط الدائرة للتحدث" if state is AssistantState.IDLE else ""))
-        if state is AssistantState.IDLE:
-            self._mic_on = False
+        self.status_label.setText(self.machine.status_ar)
         self.visualizer.set_state(state)
         self.cancel_btn.setEnabled(self.machine.busy)
         colour = STATE_COLOR[state]
@@ -214,9 +240,8 @@ class MainWindow(QWidget):
         self.mic_toggled.emit(checked)
 
     def _on_cancel(self) -> None:
-        if not self.machine.busy and not self._mic_on:
+        if not self.machine.busy:
             return
-        self._mic_on = False
         self.cancel_requested.emit()
         self.mic_btn.setChecked(False)
         self.mic_btn.setText("🎙 تحدّث")
