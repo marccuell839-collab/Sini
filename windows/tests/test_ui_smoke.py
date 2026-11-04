@@ -97,3 +97,44 @@ def test_visualizer_accepts_amplitude(window):
     window.push_amplitude(0.7)
     window.visualizer._tick()
     assert window.visualizer._energy > 0
+
+def test_main_surface_has_only_settings_button(window, qapp):
+    from PySide6.QtWidgets import QPushButton, QLineEdit
+    window.resize(1280, 720)
+    window.show()
+    qapp.processEvents()
+    assert [b for b in window.findChildren(QPushButton) if b.isVisible()] == [window.settings_btn]
+    assert not any(e.isVisible() for e in window.findChildren(QLineEdit))
+    center = window.visualizer.geometry().center()
+    assert abs(center.x() - window.width() / 2) <= 1
+    assert abs(center.y() - window.height() / 2) <= 1
+
+
+def test_orb_toggle_and_escape_stop(window):
+    seen = []
+    window.mic_toggled.connect(seen.append)
+    window.toggle_listening()
+    assert seen == [True]
+    window._on_cancel()
+    assert not window._mic_on
+    assert window.machine.state is AssistantState.IDLE
+
+def test_controller_identity_failure_closes_mic_and_fails_closed(monkeypatch, qapp):
+    from jarvis_win.core import controller as module
+    monkeypatch.setattr(module, 'get_azure_key', lambda: None)
+    monkeypatch.setattr(module, 'get_openrouter_key', lambda: None)
+    control = module.Controller(Settings())
+    class Owner:
+        enrolled = True
+        def match(self, *args):
+            raise OSError('corrupt DPAPI file')
+    class Listener:
+        def stop(self):
+            self.stopped = True
+    listener = Listener()
+    control._listener = listener
+    control.owner_voice = Owner()
+    assert not control._verify_audio(b'voice', 16000)
+    assert listener.stopped
+    assert control._listener is None
+    assert control._state is AssistantState.ERROR

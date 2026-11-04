@@ -7,7 +7,7 @@ import sys
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
-from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon, QDialog, QFormLayout, QLineEdit, QComboBox, QDialogButtonBox, QLabel, QVBoxLayout
+from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon, QDialog, QFormLayout, QLineEdit, QComboBox, QDialogButtonBox, QLabel, QVBoxLayout, QPushButton, QCheckBox
 
 from jarvis_win.core.config import Settings, secrets_available, get_openrouter_key, set_openrouter_key
 from jarvis_win.core.controller import Controller
@@ -15,6 +15,8 @@ from jarvis_win.core.files import DeletionPlan
 from jarvis_win.core.state import AssistantState
 from jarvis_win.ui.main_window import MainWindow
 from jarvis_win.ui.theme import PALETTE
+from jarvis_win.ui.enrollment import EnrollmentDialog
+from jarvis_win.core.owner_voice import WARNING_AR
 
 log = logging.getLogger("lora")
 
@@ -61,6 +63,7 @@ def _confirm_deletion(window: MainWindow, summary: str, plan: DeletionPlan) -> b
 
 def _show_settings(window: MainWindow, settings: Settings, controller: Controller) -> None:
     """Configure Groq securely through Windows Credential Manager."""
+    controller.cancel()
     dialog = QDialog(window)
     dialog.setWindowTitle("إعدادات LORA")
     dialog.setMinimumWidth(440)
@@ -85,6 +88,35 @@ def _show_settings(window: MainWindow, settings: Settings, controller: Controlle
     voice.setCurrentIndex(max(0, voice.findData(settings.voice)))
     form.addRow("صوت Groq", voice)
     layout.addLayout(form)
+    warning = QLabel(WARNING_AR)
+    warning.setWordWrap(True)
+    layout.addWidget(warning)
+    identity = QLabel("بصمة محفوظة محلياً ومشفرة" if controller.owner_voice.enrolled else "لم تُسجّل بصمة المالك")
+    layout.addWidget(identity)
+    enroll = QPushButton("تسجيل / استبدال بصمة المالك")
+    def record_owner():
+        if EnrollmentDialog(controller.owner_voice, dialog).exec() == QDialog.DialogCode.Accepted:
+            identity.setText("تم حفظ البصمة مشفرة محلياً؛ المطابقة تجريبية وليست إثبات هوية")
+    enroll.clicked.connect(record_owner)
+    layout.addWidget(enroll)
+    forget = QPushButton("حذف بصمة المالك")
+    def forget_owner():
+        try:
+            controller.owner_voice.forget()
+            identity.setText("حُذفت البصمة؛ المطابقة معطلة")
+        except OSError:
+            identity.setText("تعذّر حذف البصمة")
+    forget.clicked.connect(forget_owner)
+    layout.addWidget(forget)
+    reduced = QCheckBox("تقليل الحركة")
+    reduced.setChecked(settings.motion_intensity != "full")
+    layout.addWidget(reduced)
+    fullscreen = QPushButton("تبديل ملء الشاشة · F11")
+    fullscreen.clicked.connect(window.toggle_fullscreen)
+    layout.addWidget(fullscreen)
+    quit_button = QPushButton("إغلاق LORA")
+    quit_button.clicked.connect(QApplication.instance().quit)
+    layout.addWidget(quit_button)
     buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save |
                                QDialogButtonBox.StandardButton.Cancel)
     buttons.accepted.connect(dialog.accept)
@@ -95,6 +127,8 @@ def _show_settings(window: MainWindow, settings: Settings, controller: Controlle
     if key_input.text().strip() and not set_openrouter_key(key_input.text().strip()):
         QMessageBox.warning(window, "LORA", "تعذر حفظ المفتاح بشكل آمن في Windows Credential Manager")
         return
+    settings.motion_intensity = "reduced" if reduced.isChecked() else "full"
+    window.visualizer.set_reduced_motion(reduced.isChecked())
     settings.voice = voice.currentData()
     settings.model = model_input.text().strip() or "openai/gpt-oss-20b"
     settings.tts_provider = "groq"
@@ -109,6 +143,25 @@ def main(argv: list[str] | None = None) -> int:
 
     app = QApplication(argv if argv is not None else sys.argv)
     app.setApplicationName("LORA")
+    if "--smoke-test" in app.arguments():
+        import numpy as np
+        import faster_whisper
+        import sounddevice
+        from jarvis_win.core.owner_voice import OwnerVoice, protect
+        assert protect(protect(b"lora-dpapi-smoke"), decrypt=True) == b"lora-dpapi-smoke"
+        probe = OwnerVoice()
+        t = np.arange(48000) / 16000
+        pcm = (np.sin(2 * np.pi * 180 * t) * 8000).astype(np.int16).tobytes()
+        assert np.isfinite(probe.embedding(pcm)).all()
+        test_window = MainWindow(Settings())
+        test_window.resize(1280, 720)
+        test_window.show()
+        for state in (AssistantState.LISTENING, AssistantState.UNDERSTANDING, AssistantState.THINKING, AssistantState.SPEAKING):
+            test_window.set_state(state)
+            app.processEvents()
+            assert not test_window.grab().isNull()
+        test_window.close()
+        return 0
     app.setQuitOnLastWindowClosed(False)  # closing the window keeps the tray
 
     settings = Settings.load()
@@ -156,7 +209,7 @@ def main(argv: list[str] | None = None) -> int:
     menu = QMenu()
 
     show_action = QAction("إظهار النافذة", menu)
-    show_action.triggered.connect(lambda: (window.showNormal(), window.raise_(), window.activateWindow()))
+    show_action.triggered.connect(lambda: (window.showFullScreen(), window.raise_(), window.activateWindow()))
     menu.addAction(show_action)
 
     listen_action = QAction("استماع", menu)
@@ -174,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
 
     tray.setContextMenu(menu)
     tray.activated.connect(
-        lambda reason: window.showNormal() if reason == QSystemTrayIcon.ActivationReason.Trigger else None
+        lambda reason: window.showFullScreen() if reason == QSystemTrayIcon.ActivationReason.Trigger else None
     )
     tray.show()
 
@@ -188,7 +241,7 @@ def main(argv: list[str] | None = None) -> int:
 
     app.aboutToQuit.connect(controller.shutdown)
     window.set_state(AssistantState.IDLE)
-    window.show()
+    window.showFullScreen()
     if not get_openrouter_key():
         QTimer.singleShot(400, lambda: _show_settings(window, settings, controller))
     return app.exec()

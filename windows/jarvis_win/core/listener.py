@@ -28,6 +28,7 @@ PREROLL_FRAMES = 10
 
 @dataclass
 class ListenerCallbacks:
+    allow_audio: Callable[[bytes, int], bool] | None = None
     on_level: Callable[[float], None] | None = None
     on_speech_started: Callable[[], None] | None = None
     on_transcribing: Callable[[], None] | None = None
@@ -64,7 +65,7 @@ class VoiceListener:
     def stop(self, timeout: float = 2.0) -> None:
         self._stop.set()
         thread = self._thread
-        if thread is not None and thread.is_alive():
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
             thread.join(timeout=timeout)
         self._thread = None
 
@@ -153,6 +154,10 @@ class VoiceListener:
     def _transcribe(self, pcm: bytes) -> None:
         if not pcm:
             return
+        if self._stop.is_set():
+            return
+        if self.callbacks.allow_audio and not self.callbacks.allow_audio(pcm, SAMPLE_RATE):
+            return
         if self.callbacks.on_transcribing:
             self.callbacks.on_transcribing()
         try:
@@ -164,7 +169,7 @@ class VoiceListener:
             self._emit_error(f"فشل التعرّف: {type(exc).__name__}")
             return
 
-        if transcript.is_empty:
+        if self._stop.is_set() or transcript.is_empty:
             return
         if self.callbacks.on_transcript:
             self.callbacks.on_transcript(transcript)

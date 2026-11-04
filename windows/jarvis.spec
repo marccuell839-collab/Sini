@@ -1,3 +1,7 @@
+from PyInstaller.utils.hooks import collect_all
+
+speaker_datas, speaker_binaries, speaker_hidden = collect_all("sherpa_onnx")
+
 # PyInstaller build spec for the LORA desktop app.
 #   pyinstaller jarvis.spec
 # Produces dist/LORA/LORA.exe (one folder; starts faster than onefile).
@@ -7,9 +11,9 @@ block_cipher = None
 a = Analysis(
     ["jarvis_win/__main__.py"],
     pathex=["."],
-    binaries=[],
-    datas=[],
-    hiddenimports=[
+    binaries=speaker_binaries,
+    datas=speaker_datas + [("models/speaker.onnx", "models")],
+    hiddenimports=speaker_hidden + [
         # keyring resolves its Windows backend at runtime, so PyInstaller's
         # static analysis cannot see it.
         "keyring.backends.Windows",

@@ -1,0 +1,9 @@
+Speaker embeddings: WeSpeaker English VoxCeleb ResNet34 ONNX, distributed by
+k2-fsa/sherpa-onnx, speaker-recongition-models release.
+https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models
+https://github.com/wenet-e2e/wespeaker (Apache-2.0 code)
+Model SHA256: 5ef208a9da1453335308a6b6f4e6dfbd7e183a38b604de0a57664f45d257fe94
+Runtime: sherpa-onnx (Apache-2.0).
+This model was trained on VoxCeleb, not validated for this user's Arabic voice.
+The matching threshold is an experimental similarity cutoff, not probability.
+No liveness, replay detection, or voice-clone defense is provided.
