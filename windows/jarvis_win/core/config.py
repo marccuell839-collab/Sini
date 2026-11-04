@@ -30,6 +30,7 @@ SERVICE: Final = "JARVIS"
 _TOKEN_KEY: Final = "device_token"
 _OPENROUTER_KEY: Final = "groq_api_key"
 _AZURE_KEY: Final = "azure_speech_key"
+_DEEPGRAM_KEY: Final = "deepgram_api_key"
 
 
 def config_dir() -> Path:
@@ -51,8 +52,8 @@ class Settings:
     voice: str = "noura"
     # "sapi5" for the voices installed in Windows, "azure" for the neural ones.
     tts_provider: str = "groq"
-    # "whisper" runs locally, "azure" is faster but needs a key.
-    stt_provider: str = "whisper"
+    # Deepgram handles Arabic STT online, with no local model download.
+    stt_provider: str = "deepgram"
     whisper_model: str = "small"
     azure_region: str = ""
     # Silence that ends an utterance; lower feels snappier, higher is kinder
@@ -95,6 +96,9 @@ class Settings:
         # Migrate the former default once; retain subsequently chosen delays.
         if "endpoint_timing_version" not in raw and raw.get("endpoint_silence_ms") == 700:
             raw["endpoint_silence_ms"] = 350
+        # Windows now uses Deepgram; never silently download Whisper again.
+        if raw.get("stt_provider") in (None, "whisper"):
+            raw["stt_provider"] = "deepgram"
         known = {f for f in cls().__dataclass_fields__}
         return cls(**{k: v for k, v in raw.items() if k in known})
 
@@ -179,3 +183,11 @@ def redact(text: str) -> str:
     text = re.sub(r"sk-or-[A-Za-z0-9_-]{6,}", "sk-or-***", text)
     text = re.sub(r"cfut_[A-Za-z0-9]{6,}", "cfut_***", text)
     return text
+
+
+def get_deepgram_key() -> str | None:
+    return _get(_DEEPGRAM_KEY)
+
+
+def set_deepgram_key(key: str | None) -> bool:
+    return _set(_DEEPGRAM_KEY, key)

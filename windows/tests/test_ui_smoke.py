@@ -138,3 +138,15 @@ def test_controller_identity_failure_closes_mic_and_fails_closed(monkeypatch, qa
     assert listener.stopped
     assert control._listener is None
     assert control._state is AssistantState.ERROR
+
+def test_deepgram_key_refresh_never_falls_back_to_whisper(monkeypatch,qapp):
+    from jarvis_win.core import controller as module
+    key=[None]
+    monkeypatch.setattr(module,'get_azure_key',lambda:None)
+    monkeypatch.setattr(module,'get_openrouter_key',lambda:None)
+    monkeypatch.setattr(module,'get_deepgram_key',lambda:key[0])
+    control=module.Controller(Settings())
+    assert control.stt_available() is None
+    key[0]='test-key'
+    assert control.stt_available().id == 'deepgram'
+    assert [p.id for p in control._stt_providers] == ['deepgram']

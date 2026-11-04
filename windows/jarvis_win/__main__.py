@@ -7,9 +7,9 @@ import sys
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
-from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon, QDialog, QFormLayout, QLineEdit, QComboBox, QDialogButtonBox, QLabel, QVBoxLayout, QPushButton, QCheckBox
+from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon, QDialog, QFormLayout, QLineEdit, QComboBox, QDialogButtonBox, QLabel, QVBoxLayout, QPushButton, QCheckBox, QScrollArea, QWidget
 
-from jarvis_win.core.config import Settings, secrets_available, get_openrouter_key, set_openrouter_key
+from jarvis_win.core.config import Settings, secrets_available, get_openrouter_key, set_openrouter_key, get_deepgram_key, set_deepgram_key
 from jarvis_win.core.controller import Controller
 from jarvis_win.core.files import DeletionPlan
 from jarvis_win.core.state import AssistantState
@@ -67,7 +67,14 @@ def _show_settings(window: MainWindow, settings: Settings, controller: Controlle
     dialog = QDialog(window)
     dialog.setWindowTitle("إعدادات LORA")
     dialog.setMinimumWidth(440)
-    layout = QVBoxLayout(dialog)
+    root_layout = QVBoxLayout(dialog)
+    scroll = QScrollArea(dialog)
+    scroll.setWidgetResizable(True)
+    content = QWidget()
+    layout = QVBoxLayout(content)
+    scroll.setWidget(content)
+    root_layout.addWidget(scroll)
+    dialog.resize(560, min(760, window.screen().availableGeometry().height() - 80))
     layout.addWidget(QLabel("Groq للذكاء وصوت لورا. المفتاح محفوظ في Windows Credential Manager."))
     form = QFormLayout()
     key_input = QLineEdit()
@@ -76,6 +83,15 @@ def _show_settings(window: MainWindow, settings: Settings, controller: Controlle
     form.addRow("مفتاح Groq", key_input)
     current_label = QLabel("مفتاح محفوظ ✓" if get_openrouter_key() else "لا يوجد مفتاح")
     form.addRow("الحالة", current_label)
+    deepgram_input = QLineEdit()
+    deepgram_input.setObjectName("deepgram_key")
+    deepgram_input.setEchoMode(QLineEdit.EchoMode.Password)
+    deepgram_input.setPlaceholderText("مفتاح Deepgram الجديد؛ اتركه فارغاً للإبقاء على المحفوظ")
+    form.addRow("مفتاح Deepgram", deepgram_input)
+    form.addRow("حالة Deepgram", QLabel("مفتاح محفوظ ✓" if get_deepgram_key() else "أضف المفتاح لتفعيل الاستماع"))
+    privacy = QLabel("Deepgram يحوّل صوت السؤال إلى نص عبر الإنترنت. Groq للذكاء وصوت Noura. مفتاحان منفصلان محفوظان في Windows Credential Manager. عينات تسجيل بصمة المالك تبقى محلية.")
+    privacy.setWordWrap(True)
+    layout.addWidget(privacy)
     model_input = QLineEdit(settings.model)
     form.addRow("نموذج الذكاء", model_input)
     voice = QComboBox()
@@ -127,12 +143,16 @@ def _show_settings(window: MainWindow, settings: Settings, controller: Controlle
                                QDialogButtonBox.StandardButton.Cancel)
     buttons.accepted.connect(dialog.accept)
     buttons.rejected.connect(dialog.reject)
-    layout.addWidget(buttons)
+    root_layout.addWidget(buttons)
     if dialog.exec() != QDialog.DialogCode.Accepted:
         return
     if key_input.text().strip() and not set_openrouter_key(key_input.text().strip()):
         QMessageBox.warning(window, "LORA", "تعذر حفظ المفتاح بشكل آمن في Windows Credential Manager")
         return
+    if deepgram_input.text().strip() and not set_deepgram_key(deepgram_input.text().strip()):
+        QMessageBox.warning(window, "LORA", "تعذّر حفظ مفتاح Deepgram بأمان في Windows Credential Manager")
+        return
+    settings.stt_provider = "deepgram"
     settings.endpoint_silence_ms = silence.currentData()
     settings.motion_intensity = "reduced" if reduced.isChecked() else "full"
     window.visualizer.set_reduced_motion(reduced.isChecked())
@@ -152,7 +172,18 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("LORA")
     if "--smoke-test" in app.arguments():
         import numpy as np
-        import faster_whisper
+        import importlib.util
+        import httpx
+        from unittest.mock import patch
+        from jarvis_win.core.stt import DeepgramSttProvider
+        assert importlib.util.find_spec("faster_whisper") is None
+        def fake_deepgram(url, **kwargs):
+            assert url == "https://api.deepgram.com/v1/listen"
+            assert kwargs["params"]["language"] == "ar"
+            assert kwargs["content"][:4] == b"RIFF"
+            return httpx.Response(200, json={"results": {"channels": [{"alternatives": [{"transcript": "مرحبا", "confidence": .9}]}]}})
+        with patch("httpx.post", side_effect=fake_deepgram):
+            assert DeepgramSttProvider("smoke-test-placeholder").transcribe(bytes(32000)).text == "مرحبا"
         import sounddevice
         from jarvis_win.core.owner_voice import OwnerVoice, protect
         assert protect(protect(b"lora-dpapi-smoke"), decrypt=True) == b"lora-dpapi-smoke"
@@ -204,8 +235,7 @@ def main(argv: list[str] | None = None) -> int:
     recogniser = controller.stt_available()
     if recogniser is None:
         window.show_error(
-            "لا يوجد محرّك تعرّف على الكلام. "
-            "ثبّت faster-whisper: pip install -r requirements-stt.txt"
+            "أضف مفتاح Deepgram من الإعدادات لتفعيل الاستماع؛ لا يلزم تنزيل ويسبر."
         )
 
     window.populate_voices(controller.available_voices())
@@ -249,7 +279,7 @@ def main(argv: list[str] | None = None) -> int:
     app.aboutToQuit.connect(controller.shutdown)
     window.set_state(AssistantState.IDLE)
     window.showFullScreen()
-    if not get_openrouter_key():
+    if not get_openrouter_key() or not get_deepgram_key():
         QTimer.singleShot(400, lambda: _show_settings(window, settings, controller))
     return app.exec()
 

@@ -4,7 +4,10 @@ Click the orb or press Space to start one voice turn. Esc cancels. F11 toggles
 fullscreen. Settings is the gear in the corner; Ctrl+Q exits.
 Add your Groq key in Settings. It is stored in Windows Credential Manager.
 Groq AI and Groq Orpheus Noura require internet and your own service quota.
-Local Whisper downloads its small model on first use (about 480 MB).
+Deepgram transcribes each activated voice question over HTTPS using Arabic Nova-3.
+Add a separate Deepgram key in Settings; it is stored in Windows Credential Manager.
+No Whisper model download is required. Both Deepgram and Groq need internet
+and available account quota. Owner enrollment audio remains local.
 Enroll the owner from Settings: three six-second samples. Only a neural
 embedding is stored, encrypted using current-user Windows DPAPI. Raw enrollment
 samples are discarded. Delete/re-enroll from Settings. Existing enrollment

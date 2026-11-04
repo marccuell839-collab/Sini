@@ -28,7 +28,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-stt.txt pytest pyinstaller
+          pip install -r requirements.txt pytest pyinstaller
           if ($LASTEXITCODE -ne 0) { throw "Dependency installation failed" }
       - name: Fetch verified local speaker model
         shell: pwsh
@@ -76,7 +76,7 @@ jobs:
           tag_name: lora-windows-${{ github.sha }}
           name: LORA Windows ${{ github.sha }}
           prerelease: true
-          body: 'Portable Windows x64 build. Extract the entire ZIP and run LORA/LORA.exe. Unit tests and packaged EXE smoke test passed on Windows. Speaker similarity is experimental, cannot resist replay or voice cloning, and never replaces manual approval of dangerous actions. Whisper model downloads on first use. Groq requires your own key and network access.'
+          body: 'Portable Windows x64 build. Extract the entire ZIP and run LORA/LORA.exe. Unit tests and packaged EXE smoke test passed on Windows. Speaker similarity is experimental, cannot resist replay or voice cloning, and never replaces manual approval of dangerous actions. Deepgram transcribes Arabic audio online; no Whisper download. Deepgram and Groq each require a separate key and network access.'
           files: |
             windows/dist/LORA-Windows.zip
             windows/dist/LORA-Windows.zip.sha256

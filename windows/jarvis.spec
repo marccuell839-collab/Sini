@@ -30,6 +30,8 @@ a = Analysis(
     runtime_hooks=[],
     # Qt modules this app never touches; excluding them saves ~80 MB.
     excludes=[
+        "faster_whisper",
+        "ctranslate2",
         "PySide6.QtWebEngineCore",
         "PySide6.QtWebEngineWidgets",
         "PySide6.Qt3DCore",

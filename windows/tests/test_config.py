@@ -77,3 +77,9 @@ def test_former_endpoint_default_migrates_to_fast_delay(temp_config):
 def test_explicit_endpoint_choice_is_preserved(temp_config):
     Settings(endpoint_silence_ms=700).save()
     assert Settings.load().endpoint_silence_ms == 700
+
+def test_saved_whisper_config_migrates_to_deepgram(temp_config):
+    path = Settings.path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({'stt_provider':'whisper'}), encoding='utf-8')
+    assert Settings.load().stt_provider == 'deepgram'
