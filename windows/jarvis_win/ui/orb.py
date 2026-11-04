@@ -116,7 +116,9 @@ class JarvisOrb(QWidget):
         painter.end()
 
     def _draw_glow(self, painter: QPainter, centre: QPointF, radius: float, accent: QColor) -> None:
-        reach = radius * (1.75 + self._energy * 0.35)
+        # Fade fully before the widget edge, so the black surface stays seamless.
+        reach = min(min(self.width(), self.height()) * .495,
+                    radius * (1.75 + self._energy * 0.35))
         strength = (0.30 if self._active else 0.18) + self._energy * 0.22
 
         gradient = QRadialGradient(centre, reach)
