@@ -34,6 +34,7 @@ data class SettingsUiState(
     val sttLanguages: List<JarvisBackend.Language> = emptyList(),
     val backendPaired: Boolean = false,
     val hasDeepgramKey: Boolean = false,
+    val hasGoogleTtsKey: Boolean = false,
     val hasAzureKey: Boolean = false,
     val azureRegion: String = "",
     val sttCheck: String? = null,
@@ -58,6 +59,7 @@ class SettingsViewModel @Inject constructor(
             secureStorageAvailable = secureStore.isAvailable,
             backendPaired = backend.isPaired,
             hasDeepgramKey = !secureStore.deepgramKey.isNullOrBlank(),
+            hasGoogleTtsKey = !secureStore.googleTtsKey.isNullOrBlank(),
             hasAzureKey = !secureStore.azureSpeechKey.isNullOrBlank(),
             azureRegion = secureStore.azureRegion.orEmpty(),
         ),
@@ -150,6 +152,21 @@ class SettingsViewModel @Inject constructor(
     fun clearDeepgramKey() {
         secureStore.deepgramKey = null
         _ui.value = _ui.value.copy(hasDeepgramKey = false, sttCheck = null)
+    }
+
+    fun saveGoogleTtsKey(key: String) {
+        if (key.isBlank()) return
+        if (!secureStore.isAvailable) {
+            _ui.value = _ui.value.copy(notice = "التخزين المشفر غير متاح")
+            return
+        }
+        secureStore.googleTtsKey = key.trim()
+        _ui.value = _ui.value.copy(hasGoogleTtsKey = true, notice = "حُفظ مفتاح Google داخل التخزين المشفّر. اختبر الصوت للتحقق من صلاحيته.")
+    }
+
+    fun clearGoogleTtsKey() {
+        secureStore.googleTtsKey = null
+        _ui.value = _ui.value.copy(hasGoogleTtsKey = false, notice = "حُذف مفتاح Google من الهاتف")
     }
 
     fun saveAzureCredentials(key: String, region: String) {
@@ -267,7 +284,16 @@ class SettingsViewModel @Inject constructor(
     // -------------------------------------------------------- plain setters
 
     fun setModel(value: String) = viewModelScope.launch { settingsStore.setModel(value) }
-    fun setVoiceProvider(value: String) = viewModelScope.launch { settingsStore.setVoiceProvider(value) }
+    fun setVoiceProvider(value: String) = viewModelScope.launch {
+        if (value !in setOf("groq", "system", "google")) return@launch
+        settingsStore.setVoiceProvider(value)
+        settingsStore.setVoice(when (value) {
+            "groq" -> "aisha"
+            "google" -> "Leda"
+            else -> ""
+        })
+        loadVoices()
+    }
     fun setVoice(value: String) = viewModelScope.launch { settingsStore.setVoice(value) }
     fun setPitch(value: String) = viewModelScope.launch { settingsStore.setPitch(value) }
     fun setRate(value: String) = viewModelScope.launch { settingsStore.setRate(value) }

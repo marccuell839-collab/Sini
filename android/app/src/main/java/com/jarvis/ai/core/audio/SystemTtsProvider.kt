@@ -65,6 +65,12 @@ class SystemTtsProvider(private val context: Context) : TtsProvider {
         if (!ensureReady()) throw TtsException("لا يوجد صوت عربي في محرّك الهاتف")
         val tts = engine ?: throw TtsException("محرّك النطق غير مهيّأ")
 
+        // A selected Android TTS voice is used only when installed and available.
+        // Never pass a cloud voice id (e.g. "aisha") to the local engine.
+        engine?.voices?.firstOrNull { it.name == voice && it.locale.language == "ar" }?.let {
+            tts.voice = it
+        }
+
         // The platform engine takes multipliers, not the SSML Hz/% the cloud
         // voice uses, so the same settings are translated rather than ignored.
         tts.setPitch(pitchMultiplier(pitch))

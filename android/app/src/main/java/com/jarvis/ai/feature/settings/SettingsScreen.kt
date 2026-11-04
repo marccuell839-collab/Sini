@@ -321,7 +321,67 @@ fun SettingsScreen(
 
         // ------------------------------------------------------- voice
         Section(title = stringRes(R.string.settings_voice)) {
-            Text("النطق الأساسي: Groq Orpheus (عائشة). عند نفاد الحصة يتحول تلقائياً إلى Deepgram Thalia الإنجليزية، ثم يعود إلى عائشة بعد انتهاء مهلة Groq. يلزم مفتاح Deepgram محفوظ في قسم التعرف على الكلام.", color = TextDim, style = MaterialTheme.typography.bodyMedium)
+            Text("اختر محرّك النطق. المحلي يبدأ من الهاتف بلا مفتاح API؛ جودة الصوت تعتمد على المحرّك والصوت العربي المثبّت عندك، وليس نموذج KasbahTTS.", color = TextDim, style = MaterialTheme.typography.bodyMedium)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(
+                    selected = settings.voiceProvider == "groq",
+                    onClick = { viewModel.setVoiceProvider("groq") },
+                    label = { Text("Groq عائشة (إنترنت)") },
+                )
+                FilterChip(
+                    selected = settings.voiceProvider == "google",
+                    onClick = { viewModel.setVoiceProvider("google") },
+                    label = { Text("Google Gemini — صوت أنثوي سحابي") },
+                )
+                FilterChip(
+                    selected = settings.voiceProvider == "system",
+                    onClick = { viewModel.setVoiceProvider("system") },
+                    label = { Text("محلي سريع — محرك أندرويد (بدون API)") },
+                )
+            }
+            if (settings.voiceProvider == "google") {
+                Text(
+                    "Gemini TTS: اختر Leda أو Aoede أو Kore. اللهجة الجزائرية تُطلب من النموذج لكنها غير مضمونة. يحتاج إنترنت وحصة Google API.",
+                    color = TextDim, style = MaterialTheme.typography.bodySmall,
+                )
+                var googleKeyInput by rememberSaveable { mutableStateOf("") }
+                if (ui.hasGoogleTtsKey) Text("مفتاح Google محفوظ محلياً ✓", color = SuccessGreen)
+                OutlinedTextField(
+                    value = googleKeyInput,
+                    onValueChange = { googleKeyInput = it },
+                    label = { Text("Google AI Studio API key") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        viewModel.saveGoogleTtsKey(googleKeyInput)
+                        googleKeyInput = ""
+                    }, enabled = googleKeyInput.isNotBlank()) { Text("حفظ المفتاح") }
+                    if (ui.hasGoogleTtsKey) {
+                        TextButton(onClick = viewModel::clearGoogleTtsKey) { Text("حذف", color = ErrorRed) }
+                    }
+                }
+            }
+            if (settings.voiceProvider == "system") {
+                Text(
+                    "لصوت أجمل ثبّت محرّك TTS عربي محلي من مصدر موثوق، وعيّنه افتراضياً في إعدادات تحويل النص إلى كلام على الهاتف. هذا الخيار لا يحمّل KasbahTTS تلقائياً.",
+                    color = TextDim,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedButton(onClick = {
+                    runCatching {
+                        context.startActivity(android.content.Intent("com.android.settings.TTS_SETTINGS"))
+                    }.onFailure {
+                        runCatching {
+                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_SETTINGS))
+                        }
+                    }
+                }) { Text("إعدادات أصوات الهاتف") }
+            } else {
+                Text("عند نفاد حصة Groq، قد ينتقل الصوت إلى Deepgram الإنجليزي إذا كان مفتاحه محفوظاً.", color = TextDim, style = MaterialTheme.typography.bodySmall)
+            }
             if (ui.voices.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (option in ui.voices.take(12)) {
