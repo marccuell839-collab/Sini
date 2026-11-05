@@ -1,5 +1,11 @@
 package com.jarvis.ai.feature.settings
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -60,6 +66,11 @@ fun SettingsScreen(
     var proactiveEnabled by remember { mutableStateOf(proactivePrefs.getBoolean("enabled", false)) }
     val ui by viewModel.ui.collectAsState()
     val settings by viewModel.settings.collectAsState()
+    val voicePermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) viewModel.enrollOwnerVoice()
+    }
 
     LaunchedEffect(settings.voiceProvider) { viewModel.loadVoices() }
     LaunchedEffect(Unit) { viewModel.loadSttLanguages() }
@@ -428,6 +439,44 @@ fun SettingsScreen(
                         )
                     }
                 }) { Text("افتح إعدادات إمكانية الوصول") }
+            }
+        }
+
+        // Only an encrypted enrollment sample: do not imply speaker recognition
+        // can authenticate sensitive commands without an anti-spoofing model.
+        Section(title = "البصمة الصوتية للمالك — تجريبي") {
+            Text(
+                "تقدر تسجّل عينة صوتية من 3.5 ثوانٍ. تُشفّر بـ Android Keystore " +
+                    "وتُحفظ داخل الهاتف فقط ولا تُرسل للسيرفر. هذه عينة تدريبية، " +
+                    "وما زال التعرّف الآمن على المتحدث غير مفعّل؛ الأوامر الحساسة تحتاج تأكيدك.",
+                color = TextDim,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                if (ui.ownerVoiceEnrolled) "عينة مشفّرة محفوظة ✓" else "ما كاين حتى تسجيل محفوظ",
+                color = if (ui.ownerVoiceEnrolled) SuccessGreen else TextDim,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    enabled = !ui.ownerVoiceRecording,
+                    onClick = {
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                            PackageManager.PERMISSION_GRANTED
+                        ) {
+                            viewModel.enrollOwnerVoice()
+                        } else {
+                            voicePermission.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    },
+                ) {
+                    Text(if (ui.ownerVoiceRecording) "جارٍ تسجيل صوتك..." else "سجّل بصمتي")
+                }
+                if (ui.ownerVoiceEnrolled) {
+                    OutlinedButton(
+                        enabled = !ui.ownerVoiceRecording,
+                        onClick = viewModel::deleteOwnerVoice,
+                    ) { Text("حذف العينة") }
+                }
             }
         }
 
