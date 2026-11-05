@@ -18,6 +18,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.inject.Inject
 import javax.inject.Singleton
+import dagger.hilt.android.qualifiers.ApplicationContext
 
 /**
  * Opt-in owner speech reference stored encrypted using Android Keystore AES-GCM.
@@ -28,7 +29,7 @@ import javax.inject.Singleton
  * The raw recording is never written to disk or transmitted to an API.
  */
 @Singleton
-class OwnerVoiceProfile @Inject constructor(private val context: Context) {
+class OwnerVoiceProfile @Inject constructor(@ApplicationContext private val context: Context) {
     private val file: File get() = File(context.noBackupFilesDir, "lora_owner_voice.gcm")
     val isEnrolled: Boolean get() = file.isFile
 
