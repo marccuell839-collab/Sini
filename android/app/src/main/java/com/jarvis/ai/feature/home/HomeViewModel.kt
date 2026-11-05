@@ -89,6 +89,9 @@ class HomeViewModel @Inject constructor(
     private var lastInteractionAt = android.os.SystemClock.elapsedRealtime()
     private var lastProactiveAt = 0L
     private var greetedThisSession = false
+    private var utteranceFallbackJob: Job? = null
+    private var unfinishedUtterance = ""
+    private var receivedFinalForTurn = false
     // Explicit-session-only, modest cadence. Silence does NOT imply user is alone.
     private val proactiveIdleMs = 120_000L
     private val proactiveCooldownMs = 300_000L
@@ -427,6 +430,10 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun stopListening() {
+        utteranceFallbackJob?.cancel()
+        utteranceFallbackJob = null
+        unfinishedUtterance = ""
+        receivedFinalForTurn = false
         sttJob?.cancel()
         sttJob = null
         stt.stop()
@@ -442,6 +449,9 @@ class HomeViewModel @Inject constructor(
             is SttEvent.Ready -> go(AssistantState.LISTENING)
 
             is SttEvent.SpeechStarted -> {
+                utteranceFallbackJob?.cancel()
+                unfinishedUtterance = ""
+                receivedFinalForTurn = false
                 noteInteraction()
                 // Barge-in: the user talking over JARVIS stops JARVIS.
                 voice.stop()
@@ -454,37 +464,36 @@ class HomeViewModel @Inject constructor(
                     is SttEvent.Segment -> event.text
                     else -> return
                 }
+                if (text.isNotBlank()) unfinishedUtterance = text
                 _ui.value = _ui.value.copy(transcript = text, activity = "أسمعك...")
             }
 
             is SttEvent.Final -> {
+                utteranceFallbackJob?.cancel()
+                receivedFinalForTurn = true
+                unfinishedUtterance = ""
                 noteInteraction()
                 _ui.value = _ui.value.copy(transcript = event.text, activity = null)
-                if (settings.value.automaticFrenchHelp && _ui.value.micOn) {
-                    val now = android.os.SystemClock.elapsedRealtime()
-                    if (frenchHelpNeeded(event.text) && now - lastCoachAt >= 20_000L) {
-                        lastCoachAt = now
-                        submit(
-                            "هذا كلامي في محادثة فرنسية بعلم الحاضرين: " + event.text +
-                            ". ساعدني باختصار: اعطِ عبارة فرنسية طبيعية واحدة مناسبة للسياق، " +
-                            "ومعناها بالعربية. لا تتفاعل مع أي شخص غيري ولا تستخدم أدوات الهاتف."
-                        )
-                    } else if (addressesLora(event.text)) {
-                        // Direct requests to LORA still work even when auto-coaching is enabled.
-                        submit(event.text)
-                    } else {
-                        // Ambient speech from other people must not turn into arbitrary phone commands.
-                        if (_ui.value.state != AssistantState.LISTENING) {
-                            go(AssistantState.IDLE)
-                            go(AssistantState.LISTENING)
-                        }
-                    }
-                } else {
-                    submit(event.text)
-                }
+                handleRecognizedSpeech(event.text)
             }
 
-            is SttEvent.UtteranceEnd -> _ui.value = _ui.value.copy(activity = null)
+            is SttEvent.UtteranceEnd -> {
+                _ui.value = _ui.value.copy(activity = null)
+                // Some streaming backends signal end-of-turn without a Final.
+                // Wait briefly so a late Final has priority and avoid duplicate replies.
+                if (!receivedFinalForTurn && unfinishedUtterance.isNotBlank() && _ui.value.micOn) {
+                    val candidate = unfinishedUtterance
+                    utteranceFallbackJob?.cancel()
+                    utteranceFallbackJob = viewModelScope.launch {
+                        delay(650L)
+                        if (_ui.value.micOn && !receivedFinalForTurn) {
+                            unfinishedUtterance = ""
+                            receivedFinalForTurn = true
+                            handleRecognizedSpeech(candidate)
+                        }
+                    }
+                }
+            }
 
             is SttEvent.Failed -> {
                 _ui.value = _ui.value.copy(lastError = event.message, micOn = false, activity = null)
@@ -492,6 +501,26 @@ class HomeViewModel @Inject constructor(
                 go(AssistantState.ERROR)
             }
         }
+    }
+
+    /** A completed turn is conversational even when optional French coaching is enabled. */
+    private fun handleRecognizedSpeech(text: String) {
+        if (text.isBlank() || !_ui.value.micOn) return
+        if (settings.value.automaticFrenchHelp && frenchHelpNeeded(text)) {
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now - lastCoachAt >= 20_000L) {
+                lastCoachAt = now
+                submit(
+                    "هذا كلامي في محادثة فرنسية بعلم الحاضرين: " + text +
+                    ". ساعدني باختصار: اعطِ عبارة فرنسية طبيعية واحدة مناسبة للسياق، " +
+                    "ومعناها بالعربية. لا تستخدم أدوات الهاتف."
+                )
+                return
+            }
+        }
+        // The user deliberately opened the microphone session: normal turns
+        // must not be discarded merely because they omit the wake word.
+        submit(text)
     }
 
     /** Always permitted: an action the user cannot abort is a bug. */
