@@ -15,6 +15,10 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -42,6 +46,19 @@ class MainActivity : ComponentActivity() {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     Surface(modifier = Modifier.fillMaxSize()) {
                         var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
+                        DisposableEffect(screen) {
+                            val bars = WindowCompat.getInsetsController(window, window.decorView)
+                            if (screen == Screen.HOME) {
+                                bars.systemBarsBehavior =
+                                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                                bars.hide(WindowInsetsCompat.Type.systemBars())
+                            } else {
+                                bars.show(WindowInsetsCompat.Type.systemBars())
+                            }
+                            onDispose {
+                                bars.show(WindowInsetsCompat.Type.systemBars())
+                            }
+                        }
 
                         BackHandler(enabled = screen != Screen.HOME) { screen = Screen.HOME }
 
