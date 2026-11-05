@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Monitor
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -42,10 +43,15 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import android.Manifest
+import android.app.Activity
+import android.content.Intent
+import android.content.Context
+import android.media.projection.MediaProjectionManager
+import androidx.core.content.ContextCompat
+import com.jarvis.ai.core.vision.ScreenShareService
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -86,6 +92,34 @@ fun HomeScreen(
     val ui by viewModel.ui.collectAsState()
     val settings by viewModel.settings.collectAsState()
     val context = LocalContext.current
+    val projectionManager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+    var shareRequested by rememberSaveable { mutableStateOf(false) }
+    var sharing by rememberSaveable { mutableStateOf(ScreenShareService.isSharing) }
+    val shareConsent = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        shareRequested = false
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            val serviceIntent = Intent(context, ScreenShareService::class.java).apply {
+                action = ScreenShareService.ACTION_START
+                putExtra(ScreenShareService.EXTRA_RESULT_CODE, result.resultCode)
+                putExtra(ScreenShareService.EXTRA_DATA, result.data)
+            }
+            ContextCompat.startForegroundService(context, serviceIntent)
+            sharing = true
+        } else {
+            sharing = false
+        }
+    }
+    val requestScreenShare = {
+        shareRequested = true
+        // Android 14+ displays both options: share one app or entire screen.
+        shareConsent.launch(projectionManager.createScreenCaptureIntent())
+    }
+    val stopScreenShare = {
+        context.startService(Intent(context, ScreenShareService::class.java).setAction(ScreenShareService.ACTION_STOP))
+        sharing = false
+    }
     val micPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -157,6 +191,27 @@ fun HomeScreen(
             }
 
             Spacer(Modifier.height(22.dp))
+            TextButton(onClick = {
+                if (sharing && ScreenShareService.isSharing) stopScreenShare()
+                else requestScreenShare()
+            }) {
+                Icon(Icons.Filled.Monitor, contentDescription = null, tint = Color.White)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (sharing && ScreenShareService.isSharing) "إيقاف مشاركة الشاشة"
+                    else if (shareRequested) "اختَر الشاشة أو التطبيق..."
+                    else "مشاركة الشاشة: كاملة أو تطبيق واحد",
+                    color = Color.White,
+                )
+            }
+            Text(
+                "ستطلب أندرويد موافقتك لكل جلسة. الصور محلية؛ تحليلها بالذكاء الاصطناعي يحتاج ربطاً إضافياً.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextDim,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 22.dp),
+            )
+            Spacer(Modifier.height(12.dp))
             Text(
                 text = ui.activity ?: stringResource(ui.state.statusRes),
                 color = accent,
