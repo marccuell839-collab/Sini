@@ -48,6 +48,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.jarvis.ai.R
+import com.jarvis.ai.core.data.SecureStore
 import com.jarvis.ai.core.agent.JarvisAccessibilityService
 import com.jarvis.ai.ui.theme.BgPanel
 import com.jarvis.ai.ui.theme.ErrorRed
@@ -62,6 +63,9 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val visionStore = remember { SecureStore(context) }
+    var visionKeyInput by rememberSaveable { mutableStateOf("") }
+    var hasVisionKey by remember { mutableStateOf(!visionStore.visionKey.isNullOrBlank()) }
     val proactivePrefs = remember { context.getSharedPreferences("lora_proactive", android.content.Context.MODE_PRIVATE) }
     var proactiveEnabled by remember { mutableStateOf(proactivePrefs.getBoolean("enabled", false)) }
     val ui by viewModel.ui.collectAsState()
@@ -165,6 +169,43 @@ fun SettingsScreen(
                     color = if (ui.testOk == true) SuccessGreen else ErrorRed,
                     style = MaterialTheme.typography.bodyMedium,
                 )
+            }
+        }
+
+        Section(title = "رؤية شاشة لورا — OpenRouter") {
+            Text(
+                "نموذج الرؤية المجاني openrouter/free. صور الشاشة لا تُرسل إلا لما تطلب تحليلها. " +
+                    "قد تنطبق حدود مجانية يومية. لا تشارك شاشة فيها كلمات سر أو محادثات خاصة.",
+                color = TextDim,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            if (hasVisionKey) {
+                Text("مفتاح الرؤية محفوظ ومشفّر ✓", color = SuccessGreen)
+            }
+            OutlinedTextField(
+                value = visionKeyInput,
+                onValueChange = { visionKeyInput = it },
+                label = { Text("مفتاح OpenRouter للرؤية") },
+                placeholder = { Text("sk-or-...") },
+                visualTransformation = PasswordVisualTransformation(),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    enabled = visionKeyInput.isNotBlank() && visionStore.isAvailable,
+                    onClick = {
+                        visionStore.visionKey = visionKeyInput.trim()
+                        hasVisionKey = !visionStore.visionKey.isNullOrBlank()
+                        visionKeyInput = ""
+                    },
+                ) { Text("حفظ المفتاح") }
+                if (hasVisionKey) {
+                    TextButton(onClick = {
+                        visionStore.visionKey = null
+                        hasVisionKey = false
+                    }) { Text("حذف المفتاح", color = ErrorRed) }
+                }
             }
         }
 
