@@ -3,6 +3,9 @@ package com.jarvis.ai.feature.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jarvis.ai.core.audio.VoiceEngine
+import com.jarvis.ai.core.audio.OwnerVoiceProfile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.jarvis.ai.core.audio.VoiceOption
 import com.jarvis.ai.core.data.JarvisSettings
 import com.jarvis.ai.core.data.SecureStore
@@ -40,6 +43,8 @@ data class SettingsUiState(
     val sttCheckOk: Boolean? = null,
     val speaking: Boolean = false,
     val notice: String? = null,
+    val ownerVoiceEnrolled: Boolean = false,
+    val ownerVoiceRecording: Boolean = false,
 )
 
 @HiltViewModel
@@ -50,6 +55,7 @@ class SettingsViewModel @Inject constructor(
     private val voice: VoiceEngine,
     private val backend: JarvisBackend,
     private val sessions: AutoSttSessionProvider,
+    private val ownerVoice: OwnerVoiceProfile,
 ) : ViewModel() {
 
     private val _ui = MutableStateFlow(
@@ -60,6 +66,7 @@ class SettingsViewModel @Inject constructor(
             hasDeepgramKey = !secureStore.deepgramKey.isNullOrBlank(),
             hasAzureKey = !secureStore.azureSpeechKey.isNullOrBlank(),
             azureRegion = secureStore.azureRegion.orEmpty(),
+            ownerVoiceEnrolled = ownerVoice.isEnrolled,
         ),
     )
     val ui: StateFlow<SettingsUiState> = _ui.asStateFlow()
@@ -262,6 +269,34 @@ class SettingsViewModel @Inject constructor(
                 ),
             )
         }
+    }
+
+    /** User-initiated enrollment. Not yet a biometric authenticator. */
+    fun enrollOwnerVoice() {
+        if (_ui.value.ownerVoiceRecording) return
+        _ui.value = _ui.value.copy(ownerVoiceRecording = true, notice = "سجّل صوتك بوضوح لمدة 3.5 ثوانٍ")
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { ownerVoice.enroll() }
+            _ui.value = _ui.value.copy(
+                ownerVoiceRecording = false,
+                ownerVoiceEnrolled = ownerVoice.isEnrolled,
+                notice = result.fold(
+                    onSuccess = { "حُفظت عينة صوتك مشفّرة محلياً. التعرّف على هوية المتكلم لم يُفعّل بعد." },
+                    onFailure = { "تعذّر حفظ العينة: ${it.message ?: "خطأ غير معروف"}" },
+                ),
+            )
+        }
+    }
+
+    fun deleteOwnerVoice() {
+        val result = runCatching { ownerVoice.delete() }
+        _ui.value = _ui.value.copy(
+            ownerVoiceEnrolled = ownerVoice.isEnrolled,
+            notice = result.fold(
+                onSuccess = { "حُذفت العينة الصوتية من الهاتف" },
+                onFailure = { "تعذّر حذف العينة: ${it.message}" },
+            ),
+        )
     }
 
     // -------------------------------------------------------- plain setters
