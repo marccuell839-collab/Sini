@@ -11,6 +11,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -82,9 +83,6 @@ fun HomeScreen(
 ) {
     val ui by viewModel.ui.collectAsState()
     val settings by viewModel.settings.collectAsState()
-    var input by rememberSaveable { mutableStateOf("") }
-    var keyboardOpen by rememberSaveable { mutableStateOf(false) }
-
     val context = LocalContext.current
     val micPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -95,155 +93,109 @@ fun HomeScreen(
     val accent by animateColorAsState(
         targetValue = colorFor(ui.state),
         animationSpec = tween(420),
-        label = "accent",
+        label = "loraAccent",
     )
 
-    Column(
+    val toggleListening = {
+        when {
+            ui.micOn -> viewModel.toggleMic(false)
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED -> viewModel.toggleMic(true)
+            else -> micPermission.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    // One immersive surface: settings only, with a voice-reactive orb at the
+    // centre. Long-press the orb to cancel an active command.
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .imePadding()
-            .padding(horizontal = 18.dp, vertical = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .background(Color.Black),
     ) {
-        TopBar(onOpenSettings = onOpenSettings)
-
-        Spacer(Modifier.height(10.dp))
-
-        StatusStrip(
-            state = ui.state,
-            hasApiKey = ui.hasApiKey,
-            model = settings.model,
-            accent = accent,
-        )
-
-        Spacer(Modifier.weight(1f))
-
-        JarvisOrb(
-            state = ui.state,
-            amplitude = ui.amplitude,
-            reducedMotion = settings.reducedMotion,
+        Box(
             modifier = Modifier
-                .fillMaxWidth(0.86f)
-                .aspectRatio(1f),
-        )
-
-        Spacer(Modifier.height(6.dp))
-
-        Text(
-            text = ui.activity ?: stringResource(ui.state.statusRes),
-            color = accent,
-            style = MaterialTheme.typography.displaySmall,
-            textAlign = TextAlign.Center,
-        )
-
-        Spacer(Modifier.height(14.dp))
-
-        // --- notices -------------------------------------------------------
-        AnimatedVisibility(
-            visible = ui.lastError != null,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically(),
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(18.dp),
         ) {
-            NoticeCard(
-                title = ui.lastError.orEmpty(),
-                tone = ErrorRed,
-                onClick = null,
-            )
-        }
-
-        AnimatedVisibility(
-            visible = !ui.hasApiKey,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically(),
-        ) {
-            NoticeCard(
-                title = "مفتاح Groq غير مضبوط",
-                detail = "الأوامر المباشرة تعمل الآن — الأسئلة تحتاج المفتاح",
-                tone = WarnAmber,
+            CircleIconButton(
+                icon = Icons.Filled.Settings,
+                description = "إعدادات لورا",
+                size = 46.dp,
                 onClick = onOpenSettings,
             )
         }
 
-        AnimatedVisibility(
-            visible = !ui.secureStorageAvailable,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically(),
+        Column(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
         ) {
-            NoticeCard(
-                title = "التخزين المشفّر غير متاح",
-                detail = "لن تُحفَظ المفاتيح على هذا الجهاز",
-                tone = ErrorRed,
-                onClick = null,
-            )
-        }
-
-        // --- response ------------------------------------------------------
-        AnimatedVisibility(
-            visible = ui.transcript.isNotBlank(),
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically(),
-        ) {
-            ResponseCard(
-                text = ui.transcript,
-                state = ui.state,
-                amplitude = ui.amplitude,
-                reducedMotion = settings.reducedMotion,
-                accent = accent,
-            )
-        }
-
-        AnimatedVisibility(visible = keyboardOpen) {
-            OutlinedTextField(
-                value = input,
-                onValueChange = { input = it },
-                placeholder = { Text(stringResource(R.string.hint_input), color = TextDim) },
-                shape = RoundedCornerShape(14.dp),
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 10.dp),
-            )
-        }
+                    .fillMaxWidth(0.96f)
+                    .aspectRatio(1f)
+                    .combinedClickable(
+                        onClick = toggleListening,
+                        onLongClick = viewModel::cancel,
+                        onClickLabel = if (ui.micOn) "إيقاف استماع لورا" else "بدء استماع لورا",
+                        onLongClickLabel = "إلغاء المهمة الحالية",
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                JarvisOrb(
+                    state = ui.state,
+                    amplitude = ui.amplitude,
+                    reducedMotion = settings.reducedMotion,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
 
-        Spacer(Modifier.weight(1f))
-
-        ControlRow(
-            micOn = ui.micOn,
-            busy = ui.canCancel,
-            accent = accent,
-            canSend = input.isNotBlank(),
-            onKeyboard = { keyboardOpen = !keyboardOpen },
-            onSend = {
-                viewModel.submit(input)
-                input = ""
-                keyboardOpen = false
-            },
-            onMic = {
-                when {
-                    ui.micOn -> viewModel.toggleMic(false)
-
-                    ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-                        PackageManager.PERMISSION_GRANTED -> viewModel.toggleMic(true)
-
-                    else -> micPermission.launch(Manifest.permission.RECORD_AUDIO)
-                }
-            },
-            onCancel = viewModel::cancel,
-        )
-
-        Spacer(Modifier.height(6.dp))
-
-        if (ui.tokensThisSession > 0) {
+            Spacer(Modifier.height(22.dp))
             Text(
-                text = "رموز هذه الجلسة: ${ui.tokensThisSession}",
-                color = TextDim,
-                style = MaterialTheme.typography.bodyMedium,
+                text = ui.activity ?: stringResource(ui.state.statusRes),
+                color = accent,
+                style = MaterialTheme.typography.titleLarge,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 18.dp),
             )
+
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = when {
+                    ui.lastError != null -> ui.lastError.orEmpty()
+                    !ui.hasApiKey -> "أضيف مفتاح Groq من الإعدادات"
+                    !ui.secureStorageAvailable -> "التخزين المشفر غير متاح"
+                    ui.micOn -> "اضغط الدائرة لإيقاف الاستماع"
+                    else -> "المس الدائرة للتحدث • اضغط مطولاً للإلغاء",
+                },
+                color = if (ui.lastError != null) ErrorRed else TextDim,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+
+            AnimatedVisibility(
+                visible = ui.transcript.isNotBlank(),
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                Text(
+                    text = ui.transcript,
+                    color = Color.White.copy(alpha = 0.88f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    maxLines = 5,
+                    modifier = Modifier.padding(top = 24.dp, start = 22.dp, end = 22.dp),
+                )
+            }
         }
     }
 
-    // --- confirmation for consequential actions (spec s11) -----------------
+    // Explicit confirmation remains mandatory for consequential actions.
     ui.pendingConfirmation?.let { pending ->
         AlertDialog(
             onDismissRequest = viewModel::rejectPending,
