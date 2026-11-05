@@ -29,7 +29,7 @@ data class JarvisSettings(
      * phone's own engine.
      */
     val voiceProvider: String = "groq",
-    val voice: String = "aisha",
+    val voice: String = "noura",
     val voicePitch: String = "-15Hz",
     val voiceRate: String = "-8%",
     val autoSpeak: Boolean = true,
@@ -59,7 +59,7 @@ class SettingsStore @Inject constructor(private val context: Context) {
             sttEngine = p[Keys.STT_ENGINE] ?: JarvisSettings().sttEngine,
             sttLanguage = p[Keys.STT_LANGUAGE] ?: JarvisSettings().sttLanguage,
             voiceProvider = "groq",
-            voice = (p[Keys.VOICE] ?: JarvisSettings().voice).let { if (it == "abdullah") "aisha" else it },
+            voice = (p[Keys.VOICE] ?: JarvisSettings().voice).let { if (it == "abdullah") "noura" else it },
             voicePitch = p[Keys.PITCH] ?: JarvisSettings().voicePitch,
             voiceRate = p[Keys.RATE] ?: JarvisSettings().voiceRate,
             autoSpeak = p[Keys.AUTO_SPEAK] ?: JarvisSettings().autoSpeak,
