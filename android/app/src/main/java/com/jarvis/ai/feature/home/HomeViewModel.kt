@@ -18,6 +18,8 @@ import com.jarvis.ai.core.data.JarvisSettings
 import com.jarvis.ai.core.data.SecureStore
 import com.jarvis.ai.core.data.SettingsStore
 import com.jarvis.ai.core.net.ChatMessage
+import com.jarvis.ai.core.vision.ScreenShareService
+import com.jarvis.ai.core.vision.OpenRouterVision
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -63,6 +65,7 @@ class HomeViewModel @Inject constructor(
     private val voice: VoiceEngine,
     private val capture: AudioCapture,
     private val stt: SttEngine,
+    private val vision: OpenRouterVision,
 ) : ViewModel() {
 
     private val _ui = MutableStateFlow(
@@ -385,6 +388,36 @@ class HomeViewModel @Inject constructor(
     private fun trimHistory() {
         val maxTurns = 8
         while (history.size > maxTurns) history.removeAt(0)
+    }
+
+    /** A single snapshot is uploaded only in response to an explicit tap. */
+    fun analyzeSharedScreen() {
+        if (!ScreenShareService.isSharing) {
+            _ui.value = _ui.value.copy(lastError = "فعّل مشاركة الشاشة أولاً")
+            return
+        }
+        if (runJob?.isActive == true) {
+            _ui.value = _ui.value.copy(lastError = "لورا مشغولة الآن، حاول بعد لحظة")
+            return
+        }
+        val frame = runCatching { ScreenShareService.latestFrame?.copy(android.graphics.Bitmap.Config.ARGB_8888, false) }.getOrNull()
+        if (frame == null) {
+            _ui.value = _ui.value.copy(lastError = "نستنى حتى تظهر أول صورة من الشاشة")
+            return
+        }
+        runJob = viewModelScope.launch {
+            _ui.value = _ui.value.copy(activity = "لورا تحلل الشاشة...", lastError = null)
+            val result = try {
+                vision.describe(frame)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                "ما قدرتش نحلل الشاشة: " + e.javaClass.simpleName
+            } finally {
+                frame.recycle()
+            }
+            _ui.value = _ui.value.copy(activity = null, transcript = result)
+            if (settings.value.autoSpeak) speak(result)
+        }
     }
 
     fun toggleMic(on: Boolean) {
