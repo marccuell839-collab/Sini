@@ -260,6 +260,8 @@ class Controller(QObject):
             finally:
                 if listener:
                     listener.paused.clear()
+                if self._listener is not None:
+                    self._listener.paused.clear()
                 self._speaking.clear()
                 self._go(AssistantState.IDLE)
 

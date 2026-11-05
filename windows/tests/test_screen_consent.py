@@ -51,3 +51,32 @@ def test_close_revokes_source(session):
     session.source = ('window', 123)
     session.window.close()
     assert session.source is None
+
+def test_new_listener_during_speech_is_resumed(monkeypatch):
+    import threading
+    from types import SimpleNamespace
+    import jarvis_win.core.controller as module
+    controller = module.Controller(Settings())
+    class Voice:
+        id = 'groq'
+        def is_available(self):
+            return True
+        def speak(self, *args):
+            pass
+    controller._tts_providers = [Voice()]
+    jobs = []
+    class Thread:
+        def __init__(self, target, **kwargs):
+            jobs.append(target)
+        def start(self):
+            pass
+    monkeypatch.setattr(module.threading, 'Thread', Thread)
+    monkeypatch.setattr(module, 'get_openrouter_key', lambda: None)
+    controller.speak('hello')
+    assert controller._speaking.is_set()
+    paused = threading.Event()
+    paused.set()
+    controller._listener = SimpleNamespace(paused=paused)
+    jobs[0]()
+    assert not paused.is_set()
+    assert not controller._speaking.is_set()
