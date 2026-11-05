@@ -67,6 +67,12 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
+        <!-- User-initiated media projection, one consent per session. -->
+        <service
+            android:name=".core.vision.ScreenShareService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
         <!-- Keeps the presence socket and voice session alive while in use. -->
         <service
             android:name=".core.agent.AssistantService"
