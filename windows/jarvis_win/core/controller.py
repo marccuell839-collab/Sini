@@ -19,6 +19,7 @@ from .groq_chat import answer as groq_answer
 from .intent import route
 from .listener import ListenerCallbacks, VoiceListener
 from .state import AssistantState
+from .vad import EndpointConfig
 from .stt import AzureSttProvider, SttProvider, Transcript, WhisperSttProvider
 from .stt import pick_provider as pick_stt
 from .tools import ToolRegistry, ToolResult
@@ -31,6 +32,7 @@ log = logging.getLogger(__name__)
 class Controller(QObject):
     """Owns the moving parts; the window only renders what it emits."""
 
+    screen_requested = Signal()
     state_changed = Signal(object)  # AssistantState
     level_changed = Signal(float)
     text_shown = Signal(str)
@@ -59,6 +61,7 @@ class Controller(QObject):
         self._chat_generation = 0
         self._listener: VoiceListener | None = None
         self._speak_thread: threading.Thread | None = None
+        self._speaking = threading.Event()
         self._state = AssistantState.IDLE
 
     # ------------------------------------------------------------- state
@@ -86,6 +89,8 @@ class Controller(QObject):
             self._stop_listening()
             return
 
+        if self._listener is not None and self._listener.is_running:
+            return
         provider = self.stt_available()
         if provider is None:
             self.error_shown.emit(
@@ -101,7 +106,10 @@ class Controller(QObject):
             on_transcript=self._on_transcript,
             on_error=self.error_shown.emit,
         )
-        self._listener = VoiceListener(provider, callbacks)
+        self._listener = VoiceListener(provider, callbacks, EndpointConfig(
+            endpoint_silence_ms=max(300, min(3000, int(self.settings.endpoint_silence_ms)))))
+        if self._speaking.is_set():
+            self._listener.paused.set()
         self._listener.start()
         self._go(AssistantState.LISTENING)
 
@@ -122,6 +130,8 @@ class Controller(QObject):
 
     @Slot(str)
     def handle_utterance(self, text: str) -> None:
+        if self._speaking.is_set():
+            return
         if not text.strip():
             return
 
@@ -140,7 +150,8 @@ class Controller(QObject):
 
             def run_chat() -> None:
                 try:
-                    reply = groq_answer(key, text, model=self.settings.model, history=history)
+                    reply = groq_answer(key, text, model=self.settings.model, history=history,
+                                        name=self.settings.user_name, context=self.settings.user_context)
                 except Exception as exc:
                     if generation == self._chat_generation:
                         self.error_shown.emit(str(exc))
@@ -161,6 +172,10 @@ class Controller(QObject):
             threading.Thread(target=run_chat, name="lora-groq-chat", daemon=True).start()
             return
 
+        if intent.tool == "analyze_screen":
+            self.screen_requested.emit()
+            return
+
         tool = self.registry.find(intent.tool)
         if tool is None:
             self.error_shown.emit(f"الأداة '{intent.tool}' غير متاحة على الحاسوب")
@@ -168,6 +183,11 @@ class Controller(QObject):
             return
 
         self._go(AssistantState.EXECUTING)
+        problem = tool.validate(dict(intent.args))
+        if problem:
+            self.error_shown.emit(problem)
+            self._go(AssistantState.ERROR)
+            return
         result: ToolResult = tool.run(dict(intent.args))
         self._finish_tool(result)
 
@@ -224,6 +244,13 @@ class Controller(QObject):
             self.error_shown.emit("لا يوجد محرّك نطق متاح")
             return
 
+        if self._speaking.is_set():
+            return
+        self._speaking.set()
+        listener = self._listener
+        if listener:
+            listener.paused.set()
+
         def run() -> None:
             self._go(AssistantState.SPEAKING)
             try:
@@ -231,6 +258,11 @@ class Controller(QObject):
             except Exception as exc:
                 self.error_shown.emit(str(exc))
             finally:
+                if listener:
+                    listener.paused.clear()
+                if self._listener is not None:
+                    self._listener.paused.clear()
+                self._speaking.clear()
                 self._go(AssistantState.IDLE)
 
         self._speak_thread = threading.Thread(target=run, name="jarvis-speak", daemon=True)

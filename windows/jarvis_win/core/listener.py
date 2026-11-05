@@ -49,6 +49,7 @@ class VoiceListener:
         self.config = config or EndpointConfig()
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
+        self.paused = threading.Event()
 
     @property
     def is_running(self) -> bool:
@@ -114,6 +115,13 @@ class VoiceListener:
                 if overflowed:
                     log.debug("input overflow")
 
+                if self.paused.is_set():
+                    endpointer.reset()
+                    preroll.clear()
+                    utterance = []
+                    collecting = False
+                    continue
+
                 frame = bytes(raw)
                 if len(frame) < samples_per_frame * 2:
                     continue
@@ -164,7 +172,7 @@ class VoiceListener:
             self._emit_error(f"فشل التعرّف: {type(exc).__name__}")
             return
 
-        if transcript.is_empty:
+        if self._stop.is_set() or self.paused.is_set() or transcript.is_empty:
             return
         if self.callbacks.on_transcript:
             self.callbacks.on_transcript(transcript)

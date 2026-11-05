@@ -36,6 +36,11 @@ class MainWindow(QWidget):
     #: Emitted when the user toggles the microphone.
     mic_toggled = Signal(bool)
     settings_requested = Signal()
+    share_requested = Signal()
+    unshare_requested = Signal()
+    inspect_requested = Signal()
+    vision_requested = Signal()
+    plan_requested = Signal()
     #: Emitted when the user picks a different voice.
     voice_changed = Signal(str)
 
@@ -88,6 +93,20 @@ class MainWindow(QWidget):
         header.addWidget(settings_btn)
         root.addLayout(header)
 
+        self.share_status = QLabel("الشاشة غير مشاركة")
+        self.share_status.setWordWrap(True)
+        root.addWidget(self.share_status)
+        screen_row = QHBoxLayout()
+        for label, signal in [("مشاركة الشاشة / تطبيق", self.share_requested),
+                              ("إيقاف المشاركة", self.unshare_requested),
+                              ("معاينة محلية", self.inspect_requested),
+                              ("حللي لقطة الآن", self.vision_requested),
+                              ("خطة خطوات", self.plan_requested)]:
+            button = QPushButton(label)
+            button.clicked.connect(signal.emit)
+            screen_row.addWidget(button)
+        root.addLayout(screen_row)
+
         # --- visualiser panel --------------------------------------------
         panel = QFrame()
         panel.setObjectName("panel")
@@ -136,7 +155,7 @@ class MainWindow(QWidget):
         input_row.addWidget(self.cancel_btn)
         root.addLayout(input_row)
 
-        hint = QLabel("Ctrl+Alt+J للتفعيل من أي مكان · Esc للإيقاف")
+        hint = QLabel("Ctrl+Alt+L داخل النافذة · Esc للإيقاف")
         hint.setObjectName("status")
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(hint)
@@ -240,9 +259,11 @@ class MainWindow(QWidget):
         self.mic_toggled.emit(checked)
 
     def _on_cancel(self) -> None:
-        if not self.machine.busy:
-            return
         self.cancel_requested.emit()
         self.mic_btn.setChecked(False)
         self.mic_btn.setText("🎙 تحدّث")
         self.machine.go(AssistantState.IDLE)
+
+    def closeEvent(self, event):
+        self.cancel_requested.emit()
+        super().closeEvent(event)

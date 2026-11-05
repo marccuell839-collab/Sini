@@ -13,3 +13,6 @@ miniaudio>=1.59
 
 # deletion goes to the Recycle Bin, never straight to erase
 Send2Trash>=1.8
+
+# Confirmed desktop steps; corner-of-screen fail-safe stays enabled
+pyautogui>=0.9.54
