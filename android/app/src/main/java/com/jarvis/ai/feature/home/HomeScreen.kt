@@ -172,7 +172,7 @@ fun HomeScreen(
                     !ui.hasApiKey -> "أضيف مفتاح Groq من الإعدادات"
                     !ui.secureStorageAvailable -> "التخزين المشفر غير متاح"
                     ui.micOn -> "اضغط الدائرة لإيقاف الاستماع"
-                    else -> "المس الدائرة للتحدث • اضغط مطولاً للإلغاء",
+                    else -> "المس الدائرة للتحدث • اضغط مطولاً للإلغاء"
                 },
                 color = if (ui.lastError != null) ErrorRed else TextDim,
                 style = MaterialTheme.typography.bodyMedium,
