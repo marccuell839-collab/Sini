@@ -45,6 +45,10 @@ class SecureStore @Inject constructor(context: Context) {
         get() = prefs?.getString(KEY_OPENROUTER, null)
         set(value) = put(KEY_OPENROUTER, value)
 
+    var visionKey: String?
+        get() = prefs?.getString(KEY_VISION, null)
+        set(value) = put(KEY_VISION, value)
+
     var deviceToken: String?
         get() = prefs?.getString(KEY_DEVICE_TOKEN, null)
         set(value) = put(KEY_DEVICE_TOKEN, value)
@@ -85,6 +89,7 @@ class SecureStore @Inject constructor(context: Context) {
         const val TAG = "SecureStore"
         const val FILE_NAME = "jarvis_secure_prefs"
         const val KEY_OPENROUTER = "groq_api_key"
+        const val KEY_VISION = "openrouter_vision_key"
         const val KEY_DEVICE_TOKEN = "device_token"
         const val KEY_BACKEND_URL = "backend_url"
         const val KEY_DEEPGRAM = "deepgram_api_key"
