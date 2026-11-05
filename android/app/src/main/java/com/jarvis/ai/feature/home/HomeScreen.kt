@@ -204,8 +204,14 @@ fun HomeScreen(
                     color = Color.White,
                 )
             }
+            TextButton(
+                onClick = viewModel::analyzeSharedScreen,
+                enabled = sharing && ScreenShareService.isSharing,
+            ) {
+                Text("حللي الشاشة الآن", color = Color.White)
+            }
             Text(
-                "ستطلب أندرويد موافقتك لكل جلسة. الصور محلية؛ تحليلها بالذكاء الاصطناعي يحتاج ربطاً إضافياً.",
+                "بموافقتك، ترسل لورا لقطة واحدة إلى OpenRouter عند الضغط على التحليل فقط.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextDim,
                 textAlign = TextAlign.Center,
