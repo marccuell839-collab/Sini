@@ -22,6 +22,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -84,6 +85,49 @@ class HomeViewModel @Inject constructor(
     private var sttJob: Job? = null
     private var confirmation: CompletableDeferred<Boolean>? = null
     private var lastCoachAt = 0L
+    private var proactiveJob: Job? = null
+    private var lastInteractionAt = android.os.SystemClock.elapsedRealtime()
+    private var lastProactiveAt = 0L
+    private var greetedThisSession = false
+    // Explicit-session-only, modest cadence. Silence does NOT imply user is alone.
+    private val proactiveIdleMs = 120_000L
+    private val proactiveCooldownMs = 300_000L
+
+    private fun noteInteraction() {
+        lastInteractionAt = android.os.SystemClock.elapsedRealtime()
+    }
+
+    private fun startProactiveCompanion() {
+        proactiveJob?.cancel()
+        greetedThisSession = false
+        noteInteraction()
+        proactiveJob = viewModelScope.launch {
+            delay(700L)
+            if (_ui.value.micOn && !greetedThisSession && settings.value.autoSpeak) {
+                greetedThisSession = true
+                speak("أهلا! أنا لورا. واش تحب نديرو اليوم؟")
+                noteInteraction()
+            }
+            while (_ui.value.micOn) {
+                delay(5_000L)
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (!settings.value.autoSpeak ||
+                    _ui.value.state.isBusy ||
+                    _ui.value.pendingConfirmation != null ||
+                    now - lastInteractionAt < proactiveIdleMs ||
+                    now - lastProactiveAt < proactiveCooldownMs) continue
+                lastProactiveAt = now
+                noteInteraction()
+                speak("أنا هنا إذا تحتاجني. تحب نعاونك في حاجة؟")
+            }
+        }
+    }
+
+    private fun stopProactiveCompanion() {
+        proactiveJob?.cancel()
+        proactiveJob = null
+        greetedThisSession = false
+    }
 
     /** Detect obvious requests for help or hesitation locally; do not infer feelings from arbitrary speech. */
     private fun frenchHelpNeeded(utterance: String): Boolean {
@@ -120,6 +164,7 @@ class HomeViewModel @Inject constructor(
      */
     fun submit(utterance: String) {
         if (utterance.isBlank()) return
+        noteInteraction()
         runJob?.cancel()
         _ui.value = _ui.value.copy(transcript = "", lastError = null, activity = null)
 
@@ -341,7 +386,13 @@ class HomeViewModel @Inject constructor(
 
     fun toggleMic(on: Boolean) {
         _ui.value = _ui.value.copy(micOn = on, lastError = null)
-        if (on) startListening() else stopListening()
+        if (on) {
+            startListening()
+            if (_ui.value.micOn) startProactiveCompanion()
+        } else {
+            stopProactiveCompanion()
+            stopListening()
+        }
     }
 
     /** Needs permission: report honestly instead of showing a dead orb. */
@@ -391,6 +442,7 @@ class HomeViewModel @Inject constructor(
             is SttEvent.Ready -> go(AssistantState.LISTENING)
 
             is SttEvent.SpeechStarted -> {
+                noteInteraction()
                 // Barge-in: the user talking over JARVIS stops JARVIS.
                 voice.stop()
                 go(AssistantState.LISTENING)
@@ -406,6 +458,7 @@ class HomeViewModel @Inject constructor(
             }
 
             is SttEvent.Final -> {
+                noteInteraction()
                 _ui.value = _ui.value.copy(transcript = event.text, activity = null)
                 if (settings.value.automaticFrenchHelp && _ui.value.micOn) {
                     val now = android.os.SystemClock.elapsedRealtime()
@@ -443,6 +496,7 @@ class HomeViewModel @Inject constructor(
 
     /** Always permitted: an action the user cannot abort is a bug. */
     fun cancel() {
+        stopProactiveCompanion()
         runJob?.cancel()
         runJob = null
         pipeline?.cancel()
@@ -468,6 +522,7 @@ class HomeViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        stopProactiveCompanion()
         stopListening()
         voice.stop()
         super.onCleared()
