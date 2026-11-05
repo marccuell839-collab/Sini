@@ -45,6 +45,10 @@ def config_dir() -> Path:
 class Settings:
     """Everything the user can change that is not a secret."""
 
+    user_name: str = ""
+    user_context: str = ""
+    proactive_minutes: int = 0
+    vision_model: str = "openrouter/free"
     backend_url: str = ""
     model: str = "openai/gpt-oss-20b"
     routing_mode: str = "balanced"  # economy | balanced | quality
@@ -173,5 +177,14 @@ def redact(text: str) -> str:
 
     text = re.sub(r"jv1\.[a-z2-9]{12}\.[a-z2-9]{10}\.[A-Za-z0-9_-]+", "jv1.***", text)
     text = re.sub(r"sk-or-[A-Za-z0-9_-]{6,}", "sk-or-***", text)
+    text = re.sub(r"gsk_[A-Za-z0-9_-]{6,}", "gsk_***", text)
     text = re.sub(r"cfut_[A-Za-z0-9]{6,}", "cfut_***", text)
     return text
+
+
+def get_vision_key() -> str | None:
+    return _get("openrouter_vision_key")
+
+
+def set_vision_key(key: str | None) -> bool:
+    return _set("openrouter_vision_key", key)

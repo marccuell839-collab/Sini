@@ -7,9 +7,9 @@ import sys
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
-from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon, QDialog, QFormLayout, QLineEdit, QComboBox, QDialogButtonBox, QLabel, QVBoxLayout
+from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon, QDialog, QFormLayout, QLineEdit, QComboBox, QDialogButtonBox, QLabel, QVBoxLayout, QSpinBox
 
-from jarvis_win.core.config import Settings, secrets_available, get_openrouter_key, set_openrouter_key
+from jarvis_win.core.config import Settings, secrets_available, get_openrouter_key, set_openrouter_key, set_vision_key
 from jarvis_win.core.controller import Controller
 from jarvis_win.core.files import DeletionPlan
 from jarvis_win.core.state import AssistantState
@@ -75,6 +75,24 @@ def _show_settings(window: MainWindow, settings: Settings, controller: Controlle
     form.addRow("الحالة", current_label)
     model_input = QLineEdit(settings.model)
     form.addRow("نموذج الذكاء", model_input)
+    vision_key = QLineEdit()
+    vision_key.setEchoMode(QLineEdit.EchoMode.Password)
+    vision_key.setPlaceholderText("اتركه فارغاً للإبقاء على المفتاح")
+    form.addRow("مفتاح OpenRouter للرؤية فقط", vision_key)
+    vision_model = QLineEdit(settings.vision_model)
+    form.addRow("نموذج الرؤية (قد يكون مدفوعاً)", vision_model)
+    name = QLineEdit(settings.user_name)
+    form.addRow("اسمك (اختياري)", name)
+    context = QLineEdit(settings.user_context)
+    form.addRow("اهتماماتك، بلا أسرار (اختياري)", context)
+    endpoint = QSpinBox()
+    endpoint.setRange(300, 3000)
+    endpoint.setValue(settings.endpoint_silence_ms)
+    form.addRow("الصمت قبل الرد، ملي ثانية", endpoint)
+    proactive = QSpinBox()
+    proactive.setRange(0, 120)
+    proactive.setValue(settings.proactive_minutes)
+    form.addRow("تذكير محلي كل كم دقيقة (0 إيقاف)", proactive)
     voice = QComboBox()
     for ident, label in [
         ("noura", "Noura — نورا"), ("aisha", "Aisha — عائشة"),
@@ -95,6 +113,14 @@ def _show_settings(window: MainWindow, settings: Settings, controller: Controlle
     if key_input.text().strip() and not set_openrouter_key(key_input.text().strip()):
         QMessageBox.warning(window, "LORA", "تعذر حفظ المفتاح بشكل آمن في Windows Credential Manager")
         return
+    if vision_key.text().strip() and not set_vision_key(vision_key.text().strip()):
+        QMessageBox.warning(window, "LORA", "تعذر حفظ مفتاح الرؤية بأمان")
+        return
+    settings.vision_model = vision_model.text().strip() or "openrouter/free"
+    settings.user_name = name.text().strip()[:80]
+    settings.user_context = context.text().strip()[:2000]
+    settings.endpoint_silence_ms = endpoint.value()
+    settings.proactive_minutes = proactive.value()
     settings.voice = voice.currentData()
     settings.model = model_input.text().strip() or "openai/gpt-oss-20b"
     settings.tts_provider = "groq"
@@ -114,6 +140,35 @@ def main(argv: list[str] | None = None) -> int:
     settings = Settings.load()
     window = MainWindow(settings)
     controller = Controller(settings)
+    from jarvis_win.ui.screen_session import ScreenSession
+    screen_session = ScreenSession(window, controller)
+    window.share_requested.connect(screen_session.choose)
+    window.unshare_requested.connect(screen_session.stop)
+    window.inspect_requested.connect(screen_session.inspect)
+    window.vision_requested.connect(screen_session.send)
+    controller.screen_requested.connect(screen_session.send)
+    window.plan_requested.connect(screen_session.plan)
+    window.cancel_requested.connect(screen_session.stop)
+    # Opt-in local check-in: no model call, microphone start, or screen upload.
+    proactive_timer = QTimer(window)
+    proactive_timer.setInterval(60_000)
+    elapsed = [0]
+    def check_in():
+        if settings.proactive_minutes <= 0:
+            elapsed[0] = 0
+            return
+        if controller._state is not AssistantState.IDLE:
+            elapsed[0] = 0
+            return
+        elapsed[0] += 1
+        if elapsed[0] >= settings.proactive_minutes:
+            elapsed[0] = 0
+            text = "راني هنا خويا، تحب نعاونك في حاجة؟"
+            window.show_text(text)
+            if settings.auto_speak:
+                controller.speak(text)
+    proactive_timer.timeout.connect(check_in)
+    proactive_timer.start()
 
     # --- controller to window --------------------------------------------
     controller.state_changed.connect(window.set_state)
@@ -165,6 +220,7 @@ def main(argv: list[str] | None = None) -> int:
 
     stop_action = QAction("إيقاف", menu)
     stop_action.triggered.connect(controller.cancel)
+    stop_action.triggered.connect(screen_session.stop)
     menu.addAction(stop_action)
 
     menu.addSeparator()
@@ -186,6 +242,7 @@ def main(argv: list[str] | None = None) -> int:
         activated=lambda: controller.set_listening(True),
     )
 
+    app.aboutToQuit.connect(screen_session.stop)
     app.aboutToQuit.connect(controller.shutdown)
     window.set_state(AssistantState.IDLE)
     window.show()

@@ -2,21 +2,17 @@
 from __future__ import annotations
 
 import httpx
+from .persona import system_prompt
 
 
 def answer(api_key: str, message: str, model: str = "openai/gpt-oss-20b",
-           history: list[dict] | None = None, timeout: float = 45.0) -> str:
+           history: list[dict] | None = None, timeout: float = 45.0, name: str = "", context: str = "") -> str:
     """Get a short Arabic answer. No tool execution or arbitrary remote commands."""
     if not api_key.strip():
         raise ValueError("أدخل مفتاح Groq في إعدادات لورا")
     messages = [{
         "role": "system",
-        "content": (
-            "أنتِ لورا LORA، مساعدة صوتية شخصية ذكية تعمل على ويندوز. "
-            "تحدثي بالعربية الطبيعية، وكوني مختصرة وودودة. "
-            "لا تدّعي تنفيذ أي أمر أو فتح تطبيق إلا إذا أداة محلية أكدت نجاحه. "
-            "لا تكشفي مفاتيح API أو البيانات السرية."
-        )
+        "content": system_prompt(name, context)
     }]
     messages.extend((history or [])[-8:])
     messages.append({"role": "user", "content": message})

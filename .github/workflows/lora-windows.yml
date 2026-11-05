@@ -5,6 +5,10 @@ on:
     paths:
       - "windows/**"
       - ".github/workflows/lora-windows.yml"
+  pull_request:
+    paths:
+      - "windows/**"
+      - ".github/workflows/lora-windows.yml"
   workflow_dispatch:
 permissions:
   contents: read

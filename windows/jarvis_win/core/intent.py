@@ -104,13 +104,18 @@ _RAW_ALIASES: Final[dict[str, str]] = {
     "الحاسبة": "calculator",
     "الالة الحاسبة": "calculator",
     "calculator": "calculator",
+    "vs code": "vscode",
+    "vscode": "vscode",
+    "فيجوال ستوديو كود": "vscode",
+    "notepad": "notepad",
+    "المفكرة": "notepad",
 }
 
 APP_ALIASES: Final[dict[str, str]] = {normalize_ar(k): v for k, v in _RAW_ALIASES.items()}
 
 # Patterns below are written in NORMALISED Arabic, because route() folds the
 # input first: alef variants -> ا, ى -> ي, ة -> ه.
-_OPEN_VERBS: Final = r"(?:افتح|اضغط|شغل|ادخل|open|launch|start)"
+_OPEN_VERBS: Final = r"(?:افتح|افتحي|اضغط|شغل|شغلي|ادخل|open|launch|start)"
 _SEARCH_VERBS: Final = r"(?:ابحث|بحث|search|google)"
 _MUSIC: Final = r"(?:موسيقي|الموسيقي|اغنيه|الاغنيه|music|song)"
 _SCREEN_WORDS: Final = r"(?:شاشه|الشاشه|screen)"

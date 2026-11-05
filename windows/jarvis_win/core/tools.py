@@ -145,11 +145,24 @@ def _open_application(args: dict[str, Any]) -> ToolResult:
         "terminal": "wt.exe",
         "paint": "mspaint.exe",
     }
+    if name == "vscode":
+        candidates = [Path(os.environ.get("LOCALAPPDATA", "")) / "Programs/Microsoft VS Code/Code.exe",
+                      Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Microsoft VS Code/Code.exe"]
+        target = next((path for path in candidates if path.is_file()), None)
+        if target is None:
+            return ToolResult.failure("VS Code غير مثبت في المسارات المعروفة")
+        try:
+            subprocess.Popen([str(target)])
+        except OSError:
+            return ToolResult.failure("تعذر تشغيل VS Code")
+        return ToolResult.success("طلبت فتح VS Code؛ تحقق من نافذته")
     if name == "browser":
         webbrowser.open("https://www.google.com")
         return ToolResult.success("فتحت المتصفح")
 
-    target = known.get(name, name)
+    if name not in known:
+        return ToolResult.failure("التطبيق خارج القائمة المسموحة")
+    target = known[name]
     try:
         if sys.platform == "win32":
             os.startfile(target)  # type: ignore[attr-defined]
@@ -243,7 +256,7 @@ def default_tools() -> list[Tool]:
             [
                 Param(
                     "app", "string", "اسم التطبيق",
-                    enum=["notepad", "calculator", "explorer", "settings", "browser", "terminal", "paint"],
+                    enum=["notepad", "calculator", "explorer", "settings", "browser", "terminal", "paint", "vscode"],
                 )
             ],
             _open_application,
