@@ -234,7 +234,7 @@ class MainWindow(QWidget):
         tasks = [self.task_list.item(i).text() for i in range(self.task_list.count())]
         if not tasks:
             return
-        self.task_submitted.emit("\\n".join(tasks))
+        self.task_submitted.emit("\n".join(tasks))
 
     def show_text(self, text: str) -> None:
         self.transcript.setStyleSheet("")
