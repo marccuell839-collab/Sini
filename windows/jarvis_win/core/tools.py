@@ -144,6 +144,10 @@ def _open_application(args: dict[str, Any]) -> ToolResult:
         "browser": None,
         "terminal": "wt.exe",
         "paint": "mspaint.exe",
+        "vscode": "code.cmd",
+        "powershell": "powershell.exe",
+        "word": "winword.exe",
+        "excel": "excel.exe",
     }
     if name == "browser":
         webbrowser.open("https://www.google.com")
@@ -243,7 +247,7 @@ def default_tools() -> list[Tool]:
             [
                 Param(
                     "app", "string", "اسم التطبيق",
-                    enum=["notepad", "calculator", "explorer", "settings", "browser", "terminal", "paint"],
+                    enum=["notepad", "calculator", "explorer", "settings", "browser", "terminal", "paint", "vscode", "powershell", "word", "excel"],
                 )
             ],
             _open_application,
