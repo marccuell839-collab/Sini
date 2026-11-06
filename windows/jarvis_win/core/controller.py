@@ -142,7 +142,7 @@ class Controller(QObject):
 
             def run_chat() -> None:
                 try:
-                    reply = groq_answer(key, text, model=self.settings.model, history=history)
+                    reply = groq_answer(key, text, model=self.settings.model, history=history, assistant_name=self.settings.assistant_name)
                 except Exception as exc:
                     if generation == self._chat_generation:
                         self.error_shown.emit(str(exc))
