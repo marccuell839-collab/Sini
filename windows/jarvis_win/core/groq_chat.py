@@ -5,16 +5,17 @@ import httpx
 
 
 def answer(api_key: str, message: str, model: str = "openai/gpt-oss-20b",
-           history: list[dict] | None = None, timeout: float = 45.0) -> str:
+           history: list[dict] | None = None, timeout: float = 45.0,
+           assistant_name: str = "JARVIS") -> str:
     """Get a short Arabic answer. No tool execution or arbitrary remote commands."""
     if not api_key.strip():
         raise ValueError("أدخل مفتاح Groq في إعدادات لورا")
     messages = [{
         "role": "system",
         "content": (
-            "أنتِ لورا LORA، مساعدة صوتية شخصية ذكية تعمل على ويندوز. "
-            "تحدثي بالعربية الطبيعية، وكوني مختصرة وودودة. "
-            "لا تدّعي تنفيذ أي أمر أو فتح تطبيق إلا إذا أداة محلية أكدت نجاحه. "
+            f"اسمك {assistant_name}، مساعدة صوتية شخصية ذكية تعمل على ويندوز. "
+            "تحدّثي عن نفسك بصيغة المؤنث وخاطبي المستخدم ياسين بصيغة المذكر، بالدارجة الجزائرية. "
+            "ساعديه في البرمجة والمشاريع وAppnova. لا تدّعي تنفيذ أي أمر إلا إذا أداة محلية أكدت نجاحه. "
             "لا تكشفي مفاتيح API أو البيانات السرية."
         )
     }]
