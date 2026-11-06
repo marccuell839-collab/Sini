@@ -167,7 +167,7 @@ def main(argv: list[str] | None = None) -> int:
             window.refresh_dashboard()
             return
         task = task_queue.pop(0)
-        QTimer.singleShot(100, lambda: controller.handle_utterance(task))
+        QTimer.singleShot(1200, lambda: controller.handle_utterance(task))
 
     def start_queue(raw: str) -> None:
         nonlocal queue_running
@@ -181,7 +181,8 @@ def main(argv: list[str] | None = None) -> int:
         advance_queue()
 
     window.task_submitted.connect(start_queue)
-    controller.task_completed.connect(advance_queue)
+    controller.task_completed.connect(window.task_result)
+    window.task_result.connect(advance_queue)
     window.cancel_requested.connect(lambda: task_queue.clear())
 
     if not secrets_available():
