@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QListWidget,
     QLineEdit,
     QPushButton,
     QVBoxLayout,
@@ -18,7 +19,8 @@ from PySide6.QtWidgets import (
 from jarvis_win.core.config import Settings
 from jarvis_win.core.intent import route
 from jarvis_win.core.state import AssistantState, StateMachine
-from jarvis_win.ui.theme import PALETTE, STATE_COLOR, stylesheet
+from jarvis_win.ui import theme
+from jarvis_win.ui.theme import STATE_COLOR, stylesheet
 from jarvis_win.ui.orb import JarvisOrb
 
 
@@ -36,6 +38,7 @@ class MainWindow(QWidget):
     #: Emitted when the user toggles the microphone.
     mic_toggled = Signal(bool)
     settings_requested = Signal()
+    task_submitted = Signal(str)
     #: Emitted when the user picks a different voice.
     voice_changed = Signal(str)
 
@@ -46,8 +49,9 @@ class MainWindow(QWidget):
         self.machine.subscribe(self._on_state_changed)
         self._mic_on = False
 
-        self.setWindowTitle("LORA")
+        self.setWindowTitle(settings.assistant_name)
         self.setMinimumSize(490, 610)
+        theme.set_theme(settings.theme)
         self.setStyleSheet(stylesheet())
         if settings.language == "ar":
             self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
@@ -66,7 +70,8 @@ class MainWindow(QWidget):
 
         # --- header -------------------------------------------------------
         header = QHBoxLayout()
-        title = QLabel("L O R A")
+        title = QLabel(self.settings.assistant_name.upper())
+        self.title_label = title
         title.setObjectName("title")
         title.setFont(QFont(title.font().family(), 20, QFont.Weight.DemiBold))
         header.addWidget(title)
@@ -104,6 +109,26 @@ class MainWindow(QWidget):
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         panel_layout.addWidget(self.status_label)
         root.addWidget(panel)
+
+        self.dashboard = QLabel()
+        self.dashboard.setObjectName("dashboard")
+        self.dashboard.setWordWrap(True)
+        self.dashboard.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        root.addWidget(self.dashboard)
+
+        self.task_list = QListWidget()
+        self.task_list.setMaximumHeight(115)
+        self.task_list.setToolTip("المهام المتعددة — أضف كل مهمة في سطر منفصل")
+        root.addWidget(self.task_list)
+        task_row = QHBoxLayout()
+        add_task = QPushButton("＋ إضافة مهمة")
+        add_task.clicked.connect(self.add_task)
+        task_row.addWidget(add_task)
+        clear_tasks = QPushButton("مسح القائمة")
+        clear_tasks.clicked.connect(self.task_list.clear)
+        task_row.addWidget(clear_tasks)
+        root.addLayout(task_row)
+        self.refresh_dashboard()
 
         # --- response -----------------------------------------------------
         self.transcript = QLabel("")
@@ -152,11 +177,12 @@ class MainWindow(QWidget):
         self.visualizer.set_state(state)
         self.cancel_btn.setEnabled(self.machine.busy)
         colour = STATE_COLOR[state]
+        self.refresh_dashboard()
         self.status_label.setStyleSheet(f"color: {colour};")
 
         connected = state is not AssistantState.DISCONNECTED
         self.connection_dot.setStyleSheet(
-            f"color: {PALETTE.success if connected else PALETTE.error}; font-size: 16px;"
+            f"color: {theme.PALETTE.success if connected else theme.PALETTE.error}; font-size: 16px;"
         )
 
         # Success and error are momentary; drift back to idle on their own.
@@ -177,12 +203,36 @@ class MainWindow(QWidget):
         elif self.machine.state is AssistantState.DISCONNECTED:
             self.machine.go(AssistantState.IDLE)
 
+    def refresh_dashboard(self) -> None:
+        status = self.machine.status_ar
+        self.dashboard.setText(
+            f"● {self.settings.assistant_name}  |  {status}  |  "
+            f"النموذج: {self.settings.model}  |  المهام: {self.task_list.count()}"
+        )
+
+    def apply_preferences(self) -> None:
+        theme.set_theme(self.settings.theme)
+        self.setStyleSheet(stylesheet())
+        self.setWindowTitle(self.settings.assistant_name)
+        self.title_label.setText(self.settings.assistant_name.upper())
+        self.visualizer.update()
+        self.refresh_dashboard()
+
+    def add_task(self) -> None:
+        line = self.input.text().strip()
+        if not line:
+            return
+        self.task_list.addItem(line)
+        self.input.clear()
+        self.refresh_dashboard()
+
     def show_text(self, text: str) -> None:
         self.transcript.setStyleSheet("")
         self.transcript.setText(text)
+        self.refresh_dashboard()
 
     def show_error(self, message: str) -> None:
-        self.transcript.setStyleSheet(f"color: {PALETTE.error};")
+        self.transcript.setStyleSheet(f"color: {theme.PALETTE.error};")
         self.transcript.setText(message)
 
     def populate_voices(self, voices) -> None:
