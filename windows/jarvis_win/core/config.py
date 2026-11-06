@@ -45,6 +45,8 @@ def config_dir() -> Path:
 class Settings:
     """Everything the user can change that is not a secret."""
 
+    assistant_name: str = "JARVIS"
+    theme: str = "blue"  # blue | rose
     backend_url: str = ""
     model: str = "openai/gpt-oss-20b"
     routing_mode: str = "balanced"  # economy | balanced | quality
