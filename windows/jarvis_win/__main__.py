@@ -62,11 +62,20 @@ def _confirm_deletion(window: MainWindow, summary: str, plan: DeletionPlan) -> b
 def _show_settings(window: MainWindow, settings: Settings, controller: Controller) -> None:
     """Configure Groq securely through Windows Credential Manager."""
     dialog = QDialog(window)
-    dialog.setWindowTitle("إعدادات LORA")
+    dialog.setWindowTitle(f"إعدادات {settings.assistant_name}")
     dialog.setMinimumWidth(440)
     layout = QVBoxLayout(dialog)
     layout.addWidget(QLabel("Groq للذكاء وصوت لورا. المفتاح محفوظ في Windows Credential Manager."))
     form = QFormLayout()
+    name_input = QLineEdit(settings.assistant_name)
+    name_input.setMaxLength(28)
+    name_input.setPlaceholderText("JARVIS")
+    form.addRow("اسم المساعد", name_input)
+    theme_picker = QComboBox()
+    theme_picker.addItem("أزرق كهربائي", "blue")
+    theme_picker.addItem("وردي / LORA", "rose")
+    theme_picker.setCurrentIndex(max(0, theme_picker.findData(settings.theme)))
+    form.addRow("ثيم الواجهة", theme_picker)
     key_input = QLineEdit()
     key_input.setEchoMode(QLineEdit.EchoMode.Password)
     key_input.setPlaceholderText("أدخل مفتاح Groq الجديد (اتركه فارغاً للإبقاء على الحالي)")
@@ -95,20 +104,24 @@ def _show_settings(window: MainWindow, settings: Settings, controller: Controlle
     if key_input.text().strip() and not set_openrouter_key(key_input.text().strip()):
         QMessageBox.warning(window, "LORA", "تعذر حفظ المفتاح بشكل آمن في Windows Credential Manager")
         return
+    settings.assistant_name = name_input.text().strip() or "JARVIS"
+    settings.theme = theme_picker.currentData()
     settings.voice = voice.currentData()
     settings.model = model_input.text().strip() or "openai/gpt-oss-20b"
     settings.tts_provider = "groq"
     settings.save()
     controller._tts_providers[0].key = get_openrouter_key()
     window.populate_voices(controller.available_voices())
-    window.show_text("تم حفظ إعدادات LORA. جرّب الآن سؤالاً أو تحدّث معها بصوتك.")
+    window.apply_preferences()
+    window.show_text(f"تم حفظ إعدادات {settings.assistant_name}.")
+
 
 
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
     app = QApplication(argv if argv is not None else sys.argv)
-    app.setApplicationName("LORA")
+    app.setApplicationName("JARVIS")
     app.setQuitOnLastWindowClosed(False)  # closing the window keeps the tray
 
     settings = Settings.load()
@@ -135,6 +148,42 @@ def main(argv: list[str] | None = None) -> int:
     window.cancel_requested.connect(controller.cancel)
     window.settings_requested.connect(lambda: _show_settings(window, settings, controller))
 
+    # Execute each queued command only after the previous command completes.
+    task_queue: list[str] = []
+    queue_running = False
+
+    def advance_queue(ok: bool = True) -> None:
+        nonlocal queue_running
+        if not queue_running:
+            return
+        if not ok:
+            task_queue.clear()
+            queue_running = False
+            window.show_error("توقفت قائمة المهام عند خطوة غير ناجحة. تحقق من النتيجة قبل المتابعة.")
+            return
+        if not task_queue:
+            queue_running = False
+            window.task_list.clear()
+            window.refresh_dashboard()
+            return
+        task = task_queue.pop(0)
+        QTimer.singleShot(100, lambda: controller.handle_utterance(task))
+
+    def start_queue(raw: str) -> None:
+        nonlocal queue_running
+        if queue_running:
+            window.show_error("قائمة المهام قيد التنفيذ.")
+            return
+        task_queue[:] = [part.strip() for part in raw.splitlines() if part.strip()][:20]
+        if not task_queue:
+            return
+        queue_running = True
+        advance_queue()
+
+    window.task_submitted.connect(start_queue)
+    controller.task_completed.connect(advance_queue)
+    window.cancel_requested.connect(lambda: task_queue.clear())
+
     if not secrets_available():
         window.show_error(
             "لا يوجد مخزن بيانات اعتماد في هذا النظام، "
@@ -152,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- tray --------------------------------------------------------------
     tray = QSystemTrayIcon(_tray_icon(), app)
-    tray.setToolTip("LORA")
+    tray.setToolTip(settings.assistant_name)
     menu = QMenu()
 
     show_action = QAction("إظهار النافذة", menu)
