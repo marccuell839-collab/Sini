@@ -39,6 +39,7 @@ class MainWindow(QWidget):
     mic_toggled = Signal(bool)
     settings_requested = Signal()
     task_submitted = Signal(str)
+    task_result = Signal(bool)
     #: Emitted when the user picks a different voice.
     voice_changed = Signal(str)
 
