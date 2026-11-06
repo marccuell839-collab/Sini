@@ -1,0 +1,91 @@
+name: Build Deleter by AI (Windows EXE)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'deleter_by_ai/**'
+      - '.github/workflows/deleter-by-ai-windows.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: deleter_by_ai/requirements.txt
+
+      - name: Unpack verified standalone project source
+        shell: pwsh
+        run: |
+          @'
+          import base64, io, tarfile
+          from pathlib import Path
+          payload=Path("deleter_by_ai/source_payload.b64").read_text(encoding="ascii").strip()
+          raw=base64.b64decode(payload, validate=True)
+          dst=Path("deleter_by_ai/src")
+          with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as archive:
+              for member in archive:
+                  parts=Path(member.name).parts
+                  if not member.isfile() or not parts or ".." in parts or Path(member.name).is_absolute():
+                      raise ValueError("Unsafe package member")
+                  target=dst.joinpath(*parts)
+                  target.parent.mkdir(parents=True,exist_ok=True)
+                  target.write_bytes(archive.extractfile(member).read())
+          print("Unpacked Deleter source")
+          '@ | Set-Content -Path unpack_source.py -Encoding utf8
+          python unpack_source.py
+
+      - name: Install application and packaging dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r deleter_by_ai/src/requirements.txt "pyinstaller>=6.10,<7"
+
+      - name: Compile Python source and check application modules
+        shell: pwsh
+        run: |
+          python -m compileall -q deleter_by_ai/src
+          Push-Location deleter_by_ai/src
+          python -c "from deleter.tools import TOOLS; print('Registered tools:', len(TOOLS)); assert len(TOOLS) >= 30"
+          Pop-Location
+
+      - name: Generate embedded icon
+        shell: pwsh
+        working-directory: deleter_by_ai/src
+        run: python ../build_icon.py
+
+      - name: Build one-file desktop executable
+        shell: pwsh
+        working-directory: deleter_by_ai/src
+        run: |
+          pyinstaller --noconfirm --clean --onefile --windowed --icon "assets/deleter_icon.ico" --name "Deleter by AI" --collect-all keyring --collect-all pyautogui --collect-all pyperclip main.py
+
+      - name: Confirm EXE exists
+        shell: pwsh
+        run: |
+          $exe = "deleter_by_ai/src/dist/Deleter by AI.exe"
+          if (-not (Test-Path -LiteralPath $exe)) { throw "Windows executable missing" }
+          $file = Get-Item -LiteralPath $exe
+          if ($file.Length -lt 1000000) { throw "Windows executable unusually small" }
+          Get-FileHash -LiteralPath $exe -Algorithm SHA256
+          Write-Host ("Executable bytes: " + $file.Length)
+
+      - name: Upload Windows EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: Deleter-by-AI-Windows-EXE
+          path: deleter_by_ai/src/dist/Deleter by AI.exe
+          if-no-files-found: error
+          retention-days: 14
