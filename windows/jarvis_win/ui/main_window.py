@@ -124,6 +124,10 @@ class MainWindow(QWidget):
         add_task = QPushButton("＋ إضافة مهمة")
         add_task.clicked.connect(self.add_task)
         task_row.addWidget(add_task)
+        run_tasks = QPushButton("▶ تنفيذ المهام")
+        run_tasks.setObjectName("primary")
+        run_tasks.clicked.connect(self.run_tasks)
+        task_row.addWidget(run_tasks)
         clear_tasks = QPushButton("مسح القائمة")
         clear_tasks.clicked.connect(self.task_list.clear)
         task_row.addWidget(clear_tasks)
@@ -225,6 +229,12 @@ class MainWindow(QWidget):
         self.task_list.addItem(line)
         self.input.clear()
         self.refresh_dashboard()
+
+    def run_tasks(self) -> None:
+        tasks = [self.task_list.item(i).text() for i in range(self.task_list.count())]
+        if not tasks:
+            return
+        self.task_submitted.emit("\\n".join(tasks))
 
     def show_text(self, text: str) -> None:
         self.transcript.setStyleSheet("")
