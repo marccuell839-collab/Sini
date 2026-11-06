@@ -23,8 +23,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: pip
-          cache-dependency-path: deleter_by_ai/requirements.txt
 
       - name: Unpack verified standalone project source
         shell: pwsh
