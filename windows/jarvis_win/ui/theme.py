@@ -28,6 +28,22 @@ class Palette:
 
 
 PALETTE = Palette()
+BLUE_PALETTE = Palette(
+    bg_deep="#030814", bg_panel="#091426", bg_raised="#10233b",
+    border="#254565", text="#e9f5ff", text_dim="#91b0d0",
+    accent="#42b8ff", accent_soft="#185caa",
+)
+def set_theme(name: str) -> None:
+    """Apply the selected palette to new style sheets and the animated orb."""
+    global PALETTE
+    PALETTE = BLUE_PALETTE if name == "blue" else Palette()
+    STATE_COLOR.update({
+        AssistantState.IDLE: PALETTE.accent_soft,
+        AssistantState.LISTENING: PALETTE.accent,
+        AssistantState.SPEAKING: PALETTE.accent,
+        AssistantState.EXECUTING: PALETTE.warn,
+    })
+
 
 #: Accent colour per assistant state — the one signal the eye tracks.
 STATE_COLOR: dict[AssistantState, str] = {
@@ -73,6 +89,20 @@ def stylesheet() -> str:
         font-size: 15px;
         line-height: 150%;
     }}
+    QLabel#dashboard {
+        background: {p.bg_panel};
+        border: 1px solid {p.border};
+        border-radius: 12px;
+        padding: 12px;
+        font-size: 13px;
+        color: {p.text_dim};
+    }
+    QListWidget {
+        background: {p.bg_panel};
+        border: 1px solid {p.border};
+        border-radius: 10px;
+        padding: 8px;
+    }
     QPushButton {{
         background: {p.bg_raised};
         border: 1px solid {p.border};
