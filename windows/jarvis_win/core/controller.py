@@ -35,6 +35,7 @@ class Controller(QObject):
     level_changed = Signal(float)
     text_shown = Signal(str)
     error_shown = Signal(str)
+    task_completed = Signal(bool)
     #: (summary, plan) — the window must confirm before anything is deleted.
     approval_requested = Signal(str, object)
 
@@ -131,6 +132,7 @@ class Controller(QObject):
             if not key:
                 self.error_shown.emit("أضف مفتاح Groq من إعدادات LORA")
                 self._go(AssistantState.ERROR)
+                self.task_completed.emit(False)
                 return
 
             self._chat_generation += 1
@@ -145,6 +147,7 @@ class Controller(QObject):
                     if generation == self._chat_generation:
                         self.error_shown.emit(str(exc))
                         self._go(AssistantState.ERROR)
+                        self.task_completed.emit(False)
                     return
                 if generation != self._chat_generation:
                     return
@@ -155,6 +158,7 @@ class Controller(QObject):
                 self._conversation = self._conversation[-8:]
                 self.text_shown.emit(reply)
                 self._go(AssistantState.SUCCESS)
+                self.task_completed.emit(True)
                 if self.settings.auto_speak and generation == self._chat_generation:
                     self.speak(reply)
 
@@ -165,6 +169,7 @@ class Controller(QObject):
         if tool is None:
             self.error_shown.emit(f"الأداة '{intent.tool}' غير متاحة على الحاسوب")
             self._go(AssistantState.ERROR)
+            self.task_completed.emit(False)
             return
 
         self._go(AssistantState.EXECUTING)
@@ -176,10 +181,12 @@ class Controller(QObject):
             # Deletion stops here until the user approves the exact list.
             self.approval_requested.emit(result.summary, result.pending)
             self._go(AssistantState.IDLE)
+            self.task_completed.emit(False)
             return
 
         self.text_shown.emit(result.summary)
         self._go(AssistantState.SUCCESS if result.ok else AssistantState.ERROR)
+        self.task_completed.emit(result.ok)
         if result.ok and self.settings.auto_speak:
             self.speak(result.summary)
 
