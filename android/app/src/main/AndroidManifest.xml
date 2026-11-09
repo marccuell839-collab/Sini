@@ -67,6 +67,20 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
+        <!-- Optional keyboard chosen explicitly in Android's system settings. -->
+        <service
+            android:name=".core.keyboard.LoraKeyboardService"
+            android:label="LORA Keyboard"
+            android:exported="true"
+            android:permission="android.permission.BIND_INPUT_METHOD">
+            <intent-filter>
+                <action android:name="android.view.InputMethod" />
+            </intent-filter>
+            <meta-data
+                android:name="android.view.im"
+                android:resource="@xml/lora_input_method" />
+        </service>
+
         <!-- User-initiated media projection, one consent per session. -->
         <service
             android:name=".core.vision.ScreenShareService"
