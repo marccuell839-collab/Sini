@@ -115,6 +115,28 @@ fun SettingsScreen(
             }
         }
 
+        Section(title = "LORA Agent — كيبورد الهاتف") {
+            Text(
+                "كيبور د لورا بالعربية والإنجليزية، يخدم محلياً بدون إرسال ما تكتبه للذكاء الاصطناعي. " +
+                    "لازم تفعّلو وتختارو بنفسك من إعدادات Android؛ التفعيل ما يتمش تلقائياً.",
+                color = TextDim,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            OutlinedButton(onClick = {
+                context.startActivity(
+                    android.content.Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS)
+                )
+            }) {
+                Text("تفعيل LORA Keyboard")
+            }
+            OutlinedButton(onClick = {
+                (context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+                    as android.view.inputmethod.InputMethodManager).showInputMethodPicker()
+            }) {
+                Text("اختيار الكيبورد")
+            }
+        }
+
         // ------------------------------------------------- AI provider
         Section(title = stringRes(R.string.settings_provider)) {
             var keyInput by rememberSaveable { mutableStateOf("") }
